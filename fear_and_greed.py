@@ -21,5 +21,10 @@ def fetch_daily_data():
 
     return pd.DataFrame(response.data)
 
+
+def calculate_sma(data: pd.DataFrame):
+    pass
+
+
 def calculate_fear_and_greed_index(idx_daily_data: pd.DataFrame):
     pass
