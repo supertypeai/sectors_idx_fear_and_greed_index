@@ -1,6 +1,7 @@
 import datetime
 import os
 import requests
+import csv
 import pandas as pd
 
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ _SUPABASE_URL = os.getenv('SUPABASE_URL')
 _SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 supabase_client = create_client(_SUPABASE_URL, _SUPABASE_KEY)
 
+_SECTORS_API_KEY = os.getenv('SECTORS_API_KEY')
 _EXCHANGE_RATE_API_KEY = os.getenv('EXCHANGE_RATE_API_KEY')
 
 _TIMEZONE = 'UTC'
@@ -35,14 +37,49 @@ _MONTH_ENUM = {
 
 
 def fetch_daily_data():
-    date_1_y_ago = pd.Timestamp.now() - pd.Timedelta(365, 'days')
+    idx30_csv_url = ('https://raw.githubusercontent.com/supertypeai/sectors_indices_company_list/main/company_list'
+                     '/companies_list_idx30.csv')
+    response = requests.get(idx30_csv_url)
+    response.raise_for_status()
+
+    csv_content = response.content.decode('utf-8')
+
+    # Use csv.reader to parse the CSV content
+    csv_reader = csv.reader(csv_content.splitlines(), delimiter=',')
+
+    # Convert CSV to a list of tickers
+    idx30_tickers = [row[0] for row in csv_reader]
+    idx30_tickers = idx30_tickers[1:]
+
+    date_90_d_ago = pd.Timestamp.now() - pd.Timedelta(90, 'days')
 
     response = (supabase_client.table('idx_daily_data')
                 .select('symbol, date, close, volume, market_cap')
-                .gte('date', date_1_y_ago.date())
+                .gte('date', date_90_d_ago.date())
+                .in_('symbol', idx30_tickers)
                 .execute())
 
     return pd.DataFrame(response.data)
+
+
+def fetch_mcap_data():
+    url = 'https://api.sectors.app/v1/idx-total/'
+
+    today = pd.Timestamp.now()
+    date_90_d_ago = today - pd.Timedelta(90, 'days')
+
+    headers = {
+        'Authorization': _SECTORS_API_KEY,
+    }
+    params = {
+        'start': date_90_d_ago.date().strftime('%Y-%m-%d'),
+        'end': today.date().strftime('%Y-%m-%d')
+    }
+
+    response = requests.get(url, params=params, headers=headers)
+
+    data = response.json()
+    return pd.DataFrame.from_records(data)
 
 
 def fetch_idr_usd_rate():
