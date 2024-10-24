@@ -85,6 +85,10 @@ def calculate_volatility(daily_data: pd.DataFrame):
     df_copy_vol = df_copy_vol[['symbol', 'date', 'scaled_volatility_index']].dropna()
     df_copy_vol = df_copy_vol.groupby('date')['scaled_volatility_index'].mean().reset_index()
 
+    mean_value = df_copy_vol[(df_copy_vol['scaled_volatility_index'] != 0) & (df_copy_vol['scaled_volatility_index'] != 100)][
+        'scaled_volatility_index'].mean()
+    df_copy_vol['scaled_volatility_index'] = df_copy_vol['scaled_volatility_index'].replace([0, 100], mean_value)
+
     return df_copy_vol
 
 
