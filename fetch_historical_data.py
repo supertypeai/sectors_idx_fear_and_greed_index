@@ -19,6 +19,7 @@ _SECTORS_API_KEY = os.getenv('SECTORS_API_KEY')
 _EXCHANGE_RATE_API_KEY = os.getenv('EXCHANGE_RATE_API_KEY')
 
 _TIMEZONE = 'UTC'
+_LOCAL_TIMEZONE = 'Asia/Bangkok'
 
 _MONTH_ENUM = {
     'januari': 1,
@@ -33,6 +34,14 @@ _MONTH_ENUM = {
     'oktober': 10,
     'november': 11,
     'desember': 12
+}
+
+_INDOBEX_NAME_ENUM = {
+    'Indonesia Composite Bond Index (ICBI)': 'ICBI',
+    'INDOBeX Composite Clean Price': 'INDOBeX-CP',
+    'INDOBeX Composite Gross Price': 'INDOBeX-GP',
+    'INDOBeX Composite Effective Yield': 'INDOBeX-EY',
+    'INDOBeX Composite Gross Yield': 'INDOBeX-GY',
 }
 
 
@@ -169,6 +178,57 @@ def fetch_idr_interest_rate():
     return interest_df
 
 
+def fetch_bonds_rate(force_refresh=False):
+    # Fetch Indonesian Bond Index
+    bonds_df = pd.read_csv('bonds_rate.csv')
+    # convert date and timestamp to datetime type
+    bonds_df['date'] = pd.to_datetime(bonds_df['date']).dt.date
+
+    latest_date: datetime.date = bonds_df['date'].max()
+    today = pd.Timestamp.now(tz=_LOCAL_TIMEZONE).date()
+    yesterday = today - pd.Timedelta(1, 'days')
+
+    if today > latest_date or force_refresh:
+        url = 'https://www.phei.co.id/en-us/Data/Bond-Indexes'
+        print(url)
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'lxml')
+        table = soup.find('table', attrs={'id': 'dnn_ctr1420_BondIndexes_indobexdata_gvDailyDate'})
+        entries = table.find_all('tr')
+
+        new_entries: list[dict] = [
+            {
+                'date': today
+            },
+            {
+                'date': yesterday
+            }
+        ]
+        for entry in entries:
+            cols = entry.find_all_next('td')
+            if len(cols) == 0:
+                continue
+            name = cols[2].getText()
+            yesterday_rate = cols[3].getText()
+            latest_rate = cols[4].getText()
+            try:
+                col = _INDOBEX_NAME_ENUM[name]
+                new_entries[0][col] = float(latest_rate)
+                new_entries[1][col] = float(yesterday_rate)
+            except KeyError:
+                continue
+
+        new_entry = pd.DataFrame.from_records(new_entries)
+
+        # max_retention = today - pd.Timedelta(2 * 30, 'days')
+        # bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
+        interest_df = pd.concat([new_entry, bonds_df], sort=True).drop_duplicates()
+        interest_df.to_csv('bonds_rate.csv', index=False)
+
+    return bonds_df
+
+
 if __name__ == '__main__':
     rate_df = fetch_idr_usd_rate()
     interest_df = fetch_idr_interest_rate()
+    bonds_rate = fetch_bonds_rate()
