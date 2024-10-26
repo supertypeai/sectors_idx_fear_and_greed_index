@@ -2,6 +2,7 @@ import datetime
 import os
 import requests
 import csv
+# import cfscrape
 import pandas as pd
 
 from dotenv import load_dotenv
@@ -33,7 +34,20 @@ _MONTH_ENUM = {
     'september': 9,
     'oktober': 10,
     'november': 11,
-    'desember': 12
+    'desember': 12,
+
+    'january': 1,
+    'february': 2,
+    'march': 3,
+    # 'april': 4,
+    'may': 5,
+    'june': 6,
+    'july': 7,
+    'august': 8,
+    # 'september': 9,
+    'october': 10,
+    # 'november': 11,
+    'december': 12
 }
 
 _INDOBEX_NAME_ENUM = {
@@ -92,7 +106,7 @@ def fetch_mcap_data():
 
 
 def fetch_idr_usd_rate():
-    rate_df = pd.read_csv('exchange_rate.csv')
+    rate_df = pd.read_csv('data/exchange_rate.csv')
     # convert date and timestamp to datetime type
     rate_df['date'] = pd.to_datetime(rate_df['date']).dt.date
     rate_df['timestamp'] = pd.to_datetime(rate_df['timestamp'])
@@ -127,7 +141,7 @@ def fetch_idr_usd_rate():
     max_retention = today - pd.Timedelta(365, 'days')
     rate_df = rate_df.loc[rate_df['date'] > max_retention]
     rate_df = pd.concat([new_rate_df, rate_df], sort=True)
-    rate_df.to_csv('exchange_rate.csv', index=False)
+    rate_df.to_csv('data/exchange_rate.csv', index=False)
 
     return rate_df
 
@@ -142,7 +156,7 @@ def _id_date_format_to_datetime(date: str):
 
 
 def fetch_idr_interest_rate():
-    interest_df = pd.read_csv('interest_rate.csv')
+    interest_df = pd.read_csv('data/interest_rate.csv')
     # convert date and timestamp to datetime type
     interest_df['date'] = pd.to_datetime(interest_df['date']).dt.date
 
@@ -173,35 +187,39 @@ def fetch_idr_interest_rate():
         # max_retention = today - pd.Timedelta(2 * 365, 'days')
         # interest_df = interest_df.loc[interest_df['date'] > max_retention]
         interest_df = pd.concat([new_interest_df, interest_df], sort=True).drop_duplicates()
-        interest_df.to_csv('interest_rate.csv', index=False)
+        interest_df.to_csv('data/interest_rate.csv', index=False)
 
     return interest_df
 
 
 def fetch_bonds_rate(force_refresh=False):
     # Fetch Indonesian Bond Index
-    bonds_df = pd.read_csv('bonds_rate.csv')
+    bonds_df = pd.read_csv('data/bonds_rate.csv')
     # convert date and timestamp to datetime type
     bonds_df['date'] = pd.to_datetime(bonds_df['date']).dt.date
 
     latest_date: datetime.date = bonds_df['date'].max()
     today = pd.Timestamp.now(tz=_LOCAL_TIMEZONE).date()
-    yesterday = today - pd.Timedelta(1, 'days')
 
     if today > latest_date or force_refresh:
-        url = 'https://www.phei.co.id/en-us/Data/Bond-Indexes'
+        url = 'https://www.phei.co.id/Data/Indeks'
         print(url)
+
         response = requests.get(url)
         soup = BeautifulSoup(response.text, 'lxml')
-        table = soup.find('table', attrs={'id': 'dnn_ctr1420_BondIndexes_indobexdata_gvDailyDate'})
+        table = soup.find('table', attrs={'id': 'dnn_ctr1478_BondIndexes_indobexdata_gvDailyDate'})
         entries = table.find_all('tr')
+
+        phei_date_string = soup.find('span', {'id': 'dnn_ctr1478_BondIndexes_indobexdata_lblDate'}).getText()
+        phei_date = _id_date_format_to_datetime(phei_date_string)
+        phei_date_previous = phei_date - pd.Timedelta(1, 'days')
 
         new_entries: list[dict] = [
             {
-                'date': today
+                'date': phei_date
             },
             {
-                'date': yesterday
+                'date': phei_date_previous
             }
         ]
         for entry in entries:
@@ -209,8 +227,8 @@ def fetch_bonds_rate(force_refresh=False):
             if len(cols) == 0:
                 continue
             name = cols[2].getText()
-            yesterday_rate = cols[3].getText()
-            latest_rate = cols[4].getText()
+            yesterday_rate = (cols[3].getText()).replace(',', '.')
+            latest_rate = (cols[4].getText()).replace(',', '.')
             try:
                 col = _INDOBEX_NAME_ENUM[name]
                 new_entries[0][col] = float(latest_rate)
@@ -223,12 +241,12 @@ def fetch_bonds_rate(force_refresh=False):
         # max_retention = today - pd.Timedelta(2 * 30, 'days')
         # bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
         interest_df = pd.concat([new_entry, bonds_df], sort=True).drop_duplicates()
-        interest_df.to_csv('bonds_rate.csv', index=False)
+        interest_df.to_csv('data/bonds_rate.csv', index=False)
 
     return bonds_df
 
 
 if __name__ == '__main__':
-    rate_df = fetch_idr_usd_rate()
-    interest_df = fetch_idr_interest_rate()
+    # rate_df = fetch_idr_usd_rate()
+    # interest_df = fetch_idr_interest_rate()
     bonds_rate = fetch_bonds_rate()
