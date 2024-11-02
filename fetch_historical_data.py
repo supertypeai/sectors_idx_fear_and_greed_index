@@ -246,7 +246,48 @@ def fetch_bonds_rate(force_refresh=False):
     return bonds_df
 
 
+def fetch_temp_bonds_rate():
+    # Fetch Indonesian Bond yield rate
+    bonds_df = pd.read_csv('data/temp_bonds_rate.csv')
+    # convert date and timestamp to datetime type
+    bonds_df['date'] = pd.to_datetime(bonds_df['date']).dt.date
+
+    latest_date: datetime.date = bonds_df['date'].max()
+    today = pd.Timestamp.now(tz=_LOCAL_TIMEZONE).date()
+
+    if today > latest_date:
+        url = 'https://investing.com/rates-bonds/indonesia-10-year-bond-yield-historical-data'
+        print(url)
+        investingcom_header = _SCRAPING_HEADER.copy()
+        investingcom_header['Host'] = 'www.investing.com'
+        response = requests.get(url, headers=investingcom_header)
+        soup = BeautifulSoup(response.text, 'lxml')
+        table = soup.find('table')
+        table_body = table.find('tbody')
+        entries = table_body.find_all('tr')
+
+        new_entries: list[dict] = []
+        for entry in entries:
+            cols = entry.find_all('td')
+            date = datetime.datetime.strptime(cols[0].getText(), '%b %d, %Y').date()
+            rate = cols[1].getText()
+            new_entries.append({
+                'date': date,
+                'rate': float(rate)
+            })
+
+        new_bonds_df = pd.DataFrame.from_records(new_entries)
+
+        # max_retention = today - pd.Timedelta(2 * 30, 'days')
+        # bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
+        interest_df = pd.concat([new_bonds_df, bonds_df], sort=True).drop_duplicates()
+        interest_df.to_csv('data/temp_bonds_rate.csv', index=False)
+
+    return bonds_df
+
+
 if __name__ == '__main__':
     # rate_df = fetch_idr_usd_rate()
     # interest_df = fetch_idr_interest_rate()
     bonds_rate = fetch_bonds_rate()
+    temp_bonds_rate = fetch_temp_bonds_rate()
