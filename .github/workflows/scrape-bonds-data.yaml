@@ -1,0 +1,57 @@
+name: Scrape Daily Bonds Data
+
+on:
+  schedule:
+    - cron: '0 18 * * *'  # Schedule to run at 1:00 AM GMT+7 every day
+  workflow_dispatch:
+
+jobs:
+  scrape_data:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: give sudo access to tar for locale cache setup
+        run: sudo chown root /bin/tar && sudo chmod u+s /bin/tar
+
+      - name: Cache generated locale
+        id: cache-locale
+        uses: actions/cache@v3
+        with:
+          key: locale -a | grep "id_ID.utf8"
+          path: /usr/lib/locale/*
+
+      - if: ${{ steps.cache-locale.outputs.cache-hit != 'true' }}
+        name: install extra locales
+        run: |
+          sudo apt-get install language-pack-id
+          sudo sed -i '/id_ID.UTF-8/s/^# //g' /etc/locale.gen
+          sudo locale-gen
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run py script
+        run: python scrape_bonds_data.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          EXCHANGE_RATE_API_KEY: ${{ secrets.EXCHANGE_RATE_API_KEY }}
+          SECTORS_API_KEY: ${{ secrets.SECTORS_API_KEY }}
+
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/bonds_rate.csv
+          git commit -m "Update daily bonds rate from PHEI"
+          git push
