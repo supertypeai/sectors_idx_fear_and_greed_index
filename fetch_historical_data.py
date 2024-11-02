@@ -1,10 +1,11 @@
 import datetime
+import locale
 import os
 import requests
 import csv
-# import cfscrape
 import pandas as pd
 
+from contextlib import contextmanager
 from dotenv import load_dotenv
 from supabase import create_client
 from bs4 import BeautifulSoup
@@ -22,32 +23,12 @@ _EXCHANGE_RATE_API_KEY = os.getenv('EXCHANGE_RATE_API_KEY')
 _TIMEZONE = 'UTC'
 _LOCAL_TIMEZONE = 'Asia/Bangkok'
 
-_MONTH_ENUM = {
-    'januari': 1,
-    'februari': 2,
-    'maret': 3,
-    'april': 4,
-    'mei': 5,
-    'juni': 6,
-    'juli': 7,
-    'agustus': 8,
-    'september': 9,
-    'oktober': 10,
-    'november': 11,
-    'desember': 12,
-
-    'january': 1,
-    'february': 2,
-    'march': 3,
-    # 'april': 4,
-    'may': 5,
-    'june': 6,
-    'july': 7,
-    'august': 8,
-    # 'september': 9,
-    'october': 10,
-    # 'november': 11,
-    'december': 12
+_SCRAPING_HEADER = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br, zstd',
+    'Connection': 'keep-alive'
 }
 
 _INDOBEX_NAME_ENUM = {
@@ -57,6 +38,25 @@ _INDOBEX_NAME_ENUM = {
     'INDOBeX Composite Effective Yield': 'INDOBeX-EY',
     'INDOBeX Composite Gross Yield': 'INDOBeX-GY',
 }
+
+
+@contextmanager
+def override_locale(category, locale_string):
+    prev_locale_string = locale.getlocale(category)
+    locale.setlocale(category, locale_string)
+    yield
+    locale.setlocale(category, prev_locale_string)
+
+
+def get_previous_workday(date: datetime.date):
+    date_weekday = date.weekday()
+    if date_weekday == 0:  # monday
+        day_delta = 3
+    elif date_weekday == 6:  # sunday
+        day_delta = 2
+    else:
+        day_delta = 1
+    return date - datetime.timedelta(day_delta)
 
 
 def fetch_daily_data():
@@ -147,12 +147,8 @@ def fetch_idr_usd_rate():
 
 
 def _id_date_format_to_datetime(date: str):
-    split_date = date.split()
-    return pd.Timestamp(
-        year=int(split_date[2]),
-        month=_MONTH_ENUM[split_date[1].lower()],
-        day=int(split_date[0])
-    ).date()
+    parsed_datetime = datetime.datetime.strptime(date, '%d %B %Y')
+    return parsed_datetime.date()
 
 
 def fetch_idr_interest_rate():
@@ -163,24 +159,26 @@ def fetch_idr_interest_rate():
     latest_date: datetime.date = interest_df['date'].max()
     today = pd.Timestamp.now(tz=_TIMEZONE).date()
 
-    new_historical_data: list[dict] = []
     current_date = today
 
     if current_date.month > latest_date.month:
         url = 'https://www.bi.go.id/id/statistik/indikator/BI-Rate.aspx'
-        response = requests.get(url)
+        print(url)
+        response = requests.get(url, headers=_SCRAPING_HEADER)
         soup = BeautifulSoup(response.text, 'lxml')
         table = soup.find('table')
-        entries = table.find_all('tr')
+        tbody = table.find('tbody')
+        entries = tbody.find_all('tr')
         new_entries: list[dict] = []
-        for entry in entries:
-            cols = entry.find_all_next('td')
-            date = cols[0].getText()
-            rate = cols[1].getText()
-            new_entries.append({
-                'date': _id_date_format_to_datetime(date),
-                'rate': float(rate.split()[0])
-            })
+        with override_locale(locale.LC_TIME, 'id_ID.utf8'):
+            for entry in entries:
+                cols = entry.find_all('td')
+                date = cols[0].getText()
+                rate = cols[1].getText()
+                new_entries.append({
+                    'date': _id_date_format_to_datetime(date),
+                    'rate': float(rate.split()[0])
+                })
 
         new_interest_df = pd.DataFrame.from_records(new_entries)
 
@@ -205,14 +203,15 @@ def fetch_bonds_rate(force_refresh=False):
         url = 'https://www.phei.co.id/Data/Indeks'
         print(url)
 
-        response = requests.get(url)
+        response = requests.get(url, headers=_SCRAPING_HEADER)
         soup = BeautifulSoup(response.text, 'lxml')
         table = soup.find('table', attrs={'id': 'dnn_ctr1478_BondIndexes_indobexdata_gvDailyDate'})
         entries = table.find_all('tr')
 
         phei_date_string = soup.find('span', {'id': 'dnn_ctr1478_BondIndexes_indobexdata_lblDate'}).getText()
-        phei_date = _id_date_format_to_datetime(phei_date_string)
-        phei_date_previous = phei_date - pd.Timedelta(1, 'days')
+        with override_locale(locale.LC_TIME, 'id_ID.utf8'):
+            phei_date = _id_date_format_to_datetime(phei_date_string)
+        phei_date_previous = get_previous_workday(phei_date)
 
         new_entries: list[dict] = [
             {
@@ -287,7 +286,7 @@ def fetch_temp_bonds_rate():
 
 
 if __name__ == '__main__':
-    # rate_df = fetch_idr_usd_rate()
-    # interest_df = fetch_idr_interest_rate()
+    rate_df = fetch_idr_usd_rate()
+    interest_df = fetch_idr_interest_rate()
     bonds_rate = fetch_bonds_rate()
     temp_bonds_rate = fetch_temp_bonds_rate()
