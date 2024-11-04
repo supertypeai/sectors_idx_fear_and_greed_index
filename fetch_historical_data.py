@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 from supabase import create_client
 from bs4 import BeautifulSoup
 
-
 load_dotenv()
 
 _SUPABASE_URL = os.getenv('SUPABASE_URL')
@@ -22,6 +21,10 @@ _EXCHANGE_RATE_API_KEY = os.getenv('EXCHANGE_RATE_API_KEY')
 
 _TIMEZONE = 'UTC'
 _LOCAL_TIMEZONE = 'Asia/Bangkok'
+
+_ONE_WEEK = 11
+_ONE_YEAR = 365
+_TWO_YEARS = 2 * 365
 
 _SCRAPING_HEADER = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
@@ -59,7 +62,7 @@ def get_previous_workday(date: datetime.date):
     return date - datetime.timedelta(day_delta)
 
 
-def fetch_daily_data():
+def fetch_daily_data(timeframe: int = _ONE_WEEK):
     idx30_csv_url = ('https://raw.githubusercontent.com/supertypeai/sectors_indices_company_list/main/company_list'
                      '/companies_list_idx30.csv')
     response = requests.get(idx30_csv_url)
@@ -74,28 +77,28 @@ def fetch_daily_data():
     idx30_tickers = [row[0] for row in csv_reader]
     idx30_tickers = idx30_tickers[1:]
 
-    date_90_d_ago = pd.Timestamp.now() - pd.Timedelta(90, 'days')
+    max_past_date = pd.Timestamp.now() - pd.Timedelta(timeframe, 'days')
 
     response = (supabase_client.table('idx_daily_data')
                 .select('symbol, date, close, volume, market_cap')
-                .gte('date', date_90_d_ago.date())
+                .gte('date', max_past_date.date())
                 .in_('symbol', idx30_tickers)
                 .execute())
 
     return pd.DataFrame(response.data)
 
 
-def fetch_mcap_data():
+def fetch_mcap_data(timeframe: int = _ONE_WEEK):
     url = 'https://api.sectors.app/v1/idx-total/'
 
     today = pd.Timestamp.now()
-    date_90_d_ago = today - pd.Timedelta(90, 'days')
+    max_past_date = today - pd.Timedelta(timeframe, 'days')
 
     headers = {
         'Authorization': _SECTORS_API_KEY,
     }
     params = {
-        'start': date_90_d_ago.date().strftime('%Y-%m-%d'),
+        'start': max_past_date.date().strftime('%Y-%m-%d'),
         'end': today.date().strftime('%Y-%m-%d')
     }
 
@@ -105,7 +108,7 @@ def fetch_mcap_data():
     return pd.DataFrame.from_records(data)
 
 
-def fetch_idr_usd_rate():
+def fetch_idr_usd_rate(timeframe: int = _ONE_WEEK):
     rate_df = pd.read_csv('data/exchange_rate.csv')
     # convert date and timestamp to datetime type
     rate_df['date'] = pd.to_datetime(rate_df['date']).dt.date
@@ -118,13 +121,13 @@ def fetch_idr_usd_rate():
     one_day = pd.Timedelta(1, 'days')
     current_date = today
 
-    while current_date > latest_date:
+    while current_date >= latest_date:
         url = (
             f'https://openexchangerates.org/api/historical/{current_date}.json'
             f'?app_id={_EXCHANGE_RATE_API_KEY}'
             '&base=USD'
             '&symbols=IDR'
-            )
+        )
         print(url)
         response = requests.get(url)
         data = response.json()
@@ -138,12 +141,13 @@ def fetch_idr_usd_rate():
 
     new_rate_df = pd.DataFrame.from_records(new_historical_data)
 
-    max_retention = today - pd.Timedelta(365, 'days')
+    max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
     rate_df = rate_df.loc[rate_df['date'] > max_retention]
     rate_df = pd.concat([new_rate_df, rate_df], sort=True)
     rate_df.to_csv('data/exchange_rate.csv', index=False)
 
-    return rate_df
+    max_past_date = today - pd.Timedelta(timeframe, 'days')
+    return rate_df.loc[rate_df['date'] > max_past_date]
 
 
 def _id_date_format_to_datetime(date: str):
@@ -151,7 +155,7 @@ def _id_date_format_to_datetime(date: str):
     return parsed_datetime.date()
 
 
-def fetch_idr_interest_rate():
+def fetch_idr_interest_rate(timeframe: int = _ONE_YEAR):
     interest_df = pd.read_csv('data/interest_rate.csv')
     # convert date and timestamp to datetime type
     interest_df['date'] = pd.to_datetime(interest_df['date']).dt.date
@@ -182,15 +186,17 @@ def fetch_idr_interest_rate():
 
         new_interest_df = pd.DataFrame.from_records(new_entries)
 
-        # max_retention = today - pd.Timedelta(2 * 365, 'days')
-        # interest_df = interest_df.loc[interest_df['date'] > max_retention]
-        interest_df = pd.concat([new_interest_df, interest_df], sort=True).drop_duplicates()
+        max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
+        interest_df = interest_df.loc[interest_df['date'] > max_retention]
+        interest_df = (pd.concat([new_interest_df, interest_df], sort=True)
+                       .drop_duplicates(subset=['date'], keep='first'))
         interest_df.to_csv('data/interest_rate.csv', index=False)
 
-    return interest_df
+    max_past_date = today - pd.Timedelta(timeframe, 'days')
+    return interest_df.loc[interest_df['date'] > max_past_date]
 
 
-def fetch_bonds_rate(force_refresh=False):
+def fetch_bonds_rate(timeframe: int = _ONE_WEEK, force_refresh=False):
     # Fetch Indonesian Bond Index
     bonds_df = pd.read_csv('data/bonds_rate.csv')
     # convert date and timestamp to datetime type
@@ -237,15 +243,16 @@ def fetch_bonds_rate(force_refresh=False):
 
         new_entry = pd.DataFrame.from_records(new_entries)
 
-        # max_retention = today - pd.Timedelta(2 * 30, 'days')
-        # bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
-        interest_df = pd.concat([new_entry, bonds_df], sort=True).drop_duplicates()
+        max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
+        bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
+        interest_df = pd.concat([new_entry, bonds_df], sort=True).drop_duplicates(subset=['date'], keep='first')
         interest_df.to_csv('data/bonds_rate.csv', index=False)
 
-    return bonds_df
+    max_past_date = today - pd.Timedelta(timeframe, 'days')
+    return bonds_df.loc[bonds_df['date'] > max_past_date]
 
 
-def fetch_temp_bonds_rate():
+def fetch_temp_bonds_rate(timeframe: int = _ONE_WEEK):
     # Fetch Indonesian Bond yield rate
     bonds_df = pd.read_csv('data/temp_bonds_rate.csv')
     # convert date and timestamp to datetime type
@@ -277,16 +284,25 @@ def fetch_temp_bonds_rate():
 
         new_bonds_df = pd.DataFrame.from_records(new_entries)
 
-        # max_retention = today - pd.Timedelta(2 * 30, 'days')
-        # bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
-        interest_df = pd.concat([new_bonds_df, bonds_df], sort=True).drop_duplicates()
+        max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
+        bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
+        interest_df = pd.concat([new_bonds_df, bonds_df], sort=True).drop_duplicates(subset=['date'], keep='first')
         interest_df.to_csv('data/temp_bonds_rate.csv', index=False)
 
-    return bonds_df
+    max_past_date = today - pd.Timedelta(timeframe, 'days')
+    return bonds_df.loc[bonds_df['date'] > max_past_date]
 
 
 if __name__ == '__main__':
+    daily_df = fetch_daily_data()
+    print(daily_df)
+    mcap_df = fetch_mcap_data()
+    print(mcap_df)
     rate_df = fetch_idr_usd_rate()
+    print(rate_df)
     interest_df = fetch_idr_interest_rate()
-    bonds_rate = fetch_bonds_rate()
-    temp_bonds_rate = fetch_temp_bonds_rate()
+    print(interest_df)
+    bonds_df = fetch_bonds_rate()
+    print(bonds_df)
+    temp_bonds_df = fetch_temp_bonds_rate()
+    print(temp_bonds_df)
