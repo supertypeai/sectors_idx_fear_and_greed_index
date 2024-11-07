@@ -143,7 +143,7 @@ def fetch_idr_usd_rate(timeframe: int = _ONE_WEEK):
 
     max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
     rate_df = rate_df.loc[rate_df['date'] > max_retention]
-    rate_df = pd.concat([new_rate_df, rate_df], sort=True)
+    rate_df = pd.concat([new_rate_df, rate_df], sort=True).drop_duplicates(subset=['date'], keep='first')
     rate_df.to_csv('data/exchange_rate.csv', index=False)
 
     max_past_date = today - pd.Timedelta(timeframe, 'days')
