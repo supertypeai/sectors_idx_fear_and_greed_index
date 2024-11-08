@@ -85,7 +85,9 @@ def fetch_daily_data(timeframe: int = _ONE_WEEK):
                 .in_('symbol', idx30_tickers)
                 .execute())
 
-    return pd.DataFrame(response.data)
+    daily_data = pd.DataFrame(response.data)
+    daily_data['date'] = pd.to_datetime(daily_data['date']).dt.date
+    return daily_data
 
 
 def fetch_mcap_data(timeframe: int = _ONE_WEEK):
@@ -105,7 +107,9 @@ def fetch_mcap_data(timeframe: int = _ONE_WEEK):
     response = requests.get(url, params=params, headers=headers)
 
     data = response.json()
-    return pd.DataFrame.from_records(data)
+    mcap_data = pd.DataFrame.from_records(data)
+    mcap_data['date'] = pd.to_datetime(mcap_data['date']).dt.date
+    return mcap_data
 
 
 def fetch_idr_usd_rate(timeframe: int = _ONE_WEEK):
@@ -131,10 +135,11 @@ def fetch_idr_usd_rate(timeframe: int = _ONE_WEEK):
         print(url)
         response = requests.get(url)
         data = response.json()
+        new_record_timestamp = pd.Timestamp.fromtimestamp(float(data['timestamp']), _TIMEZONE)
         new_record = {
-            'date': current_date,
+            'date': new_record_timestamp.tz_convert(_LOCAL_TIMEZONE).date(),
             'rate': data['rates']['IDR'],
-            'timestamp': pd.Timestamp.fromtimestamp(float(data['timestamp']), _TIMEZONE)
+            'timestamp': new_record_timestamp
         }
         new_historical_data.append(new_record)
         current_date = current_date - one_day

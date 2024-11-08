@@ -30,7 +30,7 @@ def calculate_market_momentum(daily_data: pd.DataFrame) -> pd.DataFrame:
     # Small constant to avoid division by zero
     epsilon = 1e-9
     daily_momentum_df['momentum_sma'] = ((daily_momentum_df['close'] - daily_momentum_df['sma']) / (
-                daily_momentum_df['sma'] + epsilon)) * 100
+            daily_momentum_df['sma'] + epsilon)) * 100
 
     # Remove any NaNs in case any
     daily_momentum_df = daily_momentum_df.dropna(subset=['momentum_sma'])
@@ -95,8 +95,8 @@ def calculate_volatility(daily_data: pd.DataFrame) -> pd.DataFrame:
     df_copy_vol = df_copy_vol.groupby('date')['scaled_volatility_index'].mean().reset_index()
 
     mean_value = \
-    df_copy_vol[(df_copy_vol['scaled_volatility_index'] != 0) & (df_copy_vol['scaled_volatility_index'] != 100)][
-        'scaled_volatility_index'].mean()
+        df_copy_vol[(df_copy_vol['scaled_volatility_index'] != 0) & (df_copy_vol['scaled_volatility_index'] != 100)][
+            'scaled_volatility_index'].mean()
     df_copy_vol['scaled_volatility_index'] = df_copy_vol['scaled_volatility_index'].replace([0, 100], mean_value)
 
     return df_copy_vol
@@ -158,21 +158,20 @@ def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFra
     average_daily_return = df_idx_shd.groupby('date')['stock_return'].mean().reset_index()
     average_daily_return.rename(columns={'stock_return': 'average_stock_return'}, inplace=True)
 
-    # average_daily_return['date'] = pd.to_datetime(average_daily_return['date'])
-    # bonds_data['date'] = pd.to_datetime(bonds_data['date'])
-
     merged_data = pd.merge(average_daily_return, bonds_data, on='date', how='inner')
+    merged_data = merged_data.sort_values('date', ascending=True)
 
     sma_period = 7
     merged_data['sma_stock'] = merged_data['average_stock_return'].rolling(window=sma_period, min_periods=1).mean()
     merged_data['sma_rate'] = merged_data['rate'].rolling(window=sma_period, min_periods=1).mean()
+    print(merged_data)
 
     epsilon = 1e-9  # Small constant to avoid zero division errors
     merged_data['safe_haven_index'] = (
                                               (merged_data['average_stock_return'] - merged_data['sma_stock']) / (
-                                                  merged_data['sma_stock'] + epsilon) -
+                                              merged_data['sma_stock'] + epsilon) -
                                               (merged_data['rate'] - merged_data['sma_rate']) / (
-                                                          merged_data['sma_rate'] + epsilon)
+                                                      merged_data['sma_rate'] + epsilon)
                                       ) * 100
 
     min_val, max_val = -5, 5
@@ -187,12 +186,14 @@ def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFra
 
 
 def calculate_exchange_rate_index(rate_data: pd.DataFrame) -> pd.DataFrame:
-    rate_data['SMA_7'] = rate_data['rate'].rolling(window=7).mean()
-    rate_data['SMA_7'] = rate_data['SMA_7'].fillna(rate_data['SMA_7'].mean())
+    er_df = rate_data.copy()
+    er_df = er_df.sort_values('date', ascending=True)
+    er_df['SMA_7'] = er_df['rate'].rolling(window=7).mean()
+    er_df['SMA_7'] = er_df['SMA_7'].fillna(er_df['SMA_7'].mean())
     scaler = MinMaxScaler(feature_range=(0, 100))
-    rate_data['scaled_rate_index'] = scaler.fit_transform(rate_data[['SMA_7']])
+    er_df['scaled_rate_index'] = scaler.fit_transform(er_df[['SMA_7']])
 
-    return rate_data[['scaled_rate_index']]
+    return er_df[['date', 'scaled_rate_index']]
 
 
 def calculate_interest_rate_index(interest_data: pd.DataFrame) -> pd.DataFrame:
@@ -226,18 +227,18 @@ def calculate_interest_rate_index(interest_data: pd.DataFrame) -> pd.DataFrame:
     daily_ir_df['scaled_interest_index'] = daily_ir_df['scaled_interest_index'].apply(
         lambda x: mean_value if x <= 0 or x >= 100 else x
     )
+    daily_ir_df.index = daily_ir_df.index.map(datetime.date)
     return daily_ir_df[['scaled_interest_index']]
 
 
 def calculate_buffet_indicator(mcap_data: pd.DataFrame) -> pd.DataFrame:
-    # TODO fix data used in this calculation
     market_cap_df = mcap_data.copy()
     market_cap_df = market_cap_df[['date', 'idx_total_market_cap']]
 
     # Indonesian GDP for 2024 in Indonesian Rupiah (IDR)
     # Using an approximate exchange rate: 1 USD = 15,000 IDR
     usd_to_idr_exchange_rate = 15000
-    indonesia_gdp_idr = 1.47 * 10**12 * usd_to_idr_exchange_rate  # 1.47 trillion USD to IDR
+    indonesia_gdp_idr = 1.47 * 10 ** 12 * usd_to_idr_exchange_rate  # 1.47 trillion USD to IDR
 
     market_cap_df['buffett_indicator'] = (market_cap_df['idx_total_market_cap'] / indonesia_gdp_idr) * 100
 
@@ -263,20 +264,31 @@ def calculate_buffet_indicator(mcap_data: pd.DataFrame) -> pd.DataFrame:
 
 
 def average_indices(x: pd.Series, weight=None) -> float:
+    if weight is None:
+        weight = {
+            'momentum': .125,
+            'strength': .125,
+            'volatility': .125,
+            'vb': .125,
+            'safe_haven': .125,
+            'rate': .125,
+            'interest': .125,
+            'buffett': .125,
+        }
     return (
-        x.momentum_scaled +
-        x.scaled_strength_index +
-        x.scaled_volatility_index +
-        x.scaled_vb +
-        x.safe_haven_scaled +
-        x.scaled_rate_index +
-        x.scaled_interest_index +
-        x.buffett_scaled
+            x.momentum_scaled * weight['momentum'] +
+            x.scaled_strength_index * weight['strength'] +
+            x.scaled_volatility_index * weight['volatility'] +
+            x.scaled_vb * weight['vb'] +
+            x.safe_haven_scaled * weight['safe_haven'] +
+            x.scaled_rate_index * weight['rate'] +
+            x.scaled_interest_index * weight['interest'] +
+            x.buffett_scaled * weight['buffett']
     )
 
 
 def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataFrame, exchange_rate_data: pd.DataFrame,
-                                   interest_data: pd.DataFrame, bonds_data: pd.DataFrame, verbose = False):
+                                   interest_data: pd.DataFrame, bonds_data: pd.DataFrame, verbose=False):
     # Calculate Market Momentum
     daily_momentum_index = calculate_market_momentum(daily_data)
 
@@ -316,7 +328,7 @@ def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataF
         volatility_index.set_index('date'),
         daily_volume_index.set_index('date'),
         safe_haven_index.set_index('date'),
-        exchange_rate_index,
+        exchange_rate_index.set_index('date'),
         interest_rate_index,
         buffet_indicator_index.set_index('date')
     ])
