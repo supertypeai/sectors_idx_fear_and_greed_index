@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from datetime import datetime
+from math import ceil
 from sklearn.preprocessing import MinMaxScaler
 
 
@@ -164,7 +165,6 @@ def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFra
     sma_period = 7
     merged_data['sma_stock'] = merged_data['average_stock_return'].rolling(window=sma_period, min_periods=1).mean()
     merged_data['sma_rate'] = merged_data['rate'].rolling(window=sma_period, min_periods=1).mean()
-    print(merged_data)
 
     epsilon = 1e-9  # Small constant to avoid zero division errors
     merged_data['safe_haven_index'] = (
@@ -174,7 +174,8 @@ def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFra
                                                       merged_data['sma_rate'] + epsilon)
                                       ) * 100
 
-    min_val, max_val = -5, 5
+    # Scale the Safe Haven Demand Index to 0-100 for Fear and Greed context
+    min_val, max_val = -1000, 1000  # Assume min/max range for scaling to 0-100
     merged_data['safe_haven_scaled'] = merged_data['safe_haven_index'].apply(
         lambda x: scale_to_100(x, min_val, max_val)
     )
@@ -196,39 +197,45 @@ def calculate_exchange_rate_index(rate_data: pd.DataFrame) -> pd.DataFrame:
     return er_df[['date', 'scaled_rate_index']]
 
 
-def calculate_interest_rate_index(interest_data: pd.DataFrame) -> pd.DataFrame:
+def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int) -> pd.DataFrame:
     interest_rate = interest_data.copy()
     interest_rate['date'] = pd.to_datetime(interest_rate['date'])
+    interest_rate = interest_rate.sort_values('date', ascending=True)
     interest_rate.set_index('date', inplace=True)
     end_date = datetime.now()
     latest_date = pd.Timestamp(interest_rate.index.max())
 
     if latest_date.month < end_date.month:
-        # Append the last available rate for the month starting on the 1st of end_date's month if missing
+        # Append the last available rate for the month to the current date of end_date's month if missing
         last_rate = interest_rate['rate'].iloc[-1]
         new_row = pd.DataFrame({'rate': [last_rate]}, index=[end_date])
-        interest_rate = pd.concat([new_row, interest_rate])
+        interest_rate = pd.concat([interest_rate, new_row])
 
-    daily_ir_df = interest_rate.resample('D').ffill()
-    # Calculate the 7-day Simple Moving Average (SMA)
-    daily_ir_df['SMA_7'] = daily_ir_df['rate'].rolling(window=7).mean()
+    # Calculate the 3-month Simple Moving Average (SMA)
+    interest_rate['SMA_3'] = interest_rate['rate'].rolling(window=3).mean()
     # Calculate the Fear and Greed Index as the difference between the rate and the SMA
-    daily_ir_df['fear_greed_index'] = daily_ir_df['rate'] - daily_ir_df['SMA_7']
-    # Handle initial NaN values in SMA calculation (first 6 days) by filling them with 0 for now
-    daily_ir_df['fear_greed_index'] = daily_ir_df['fear_greed_index'].fillna(0)
+    interest_rate['fear_greed_index'] = interest_rate['rate'] - interest_rate['SMA_3']
+    # Handle initial NaN values in SMA calculation by filling them with 0 for now
+    interest_rate['fear_greed_index'] = interest_rate['fear_greed_index'].fillna(0)
     # Scale the Fear and Greed Index to a range between 0 and 100
     scaler = MinMaxScaler(feature_range=(0, 100))
     # Reshape for scaling to avoid any zero division issue and fit_transform safely
-    daily_ir_df['scaled_interest_index'] = scaler.fit_transform(daily_ir_df[['fear_greed_index']])
-    # Handle out-of-bound values (replace ≤0 and ≥100 values with the mean)
-    mean_value = daily_ir_df['scaled_interest_index'].mean()
+    interest_rate['scaled_interest_index'] = scaler.fit_transform(interest_rate[['fear_greed_index']])
 
-    # Apply constraints: Replace values ≤ 0 or ≥ 100 with the mean value
-    daily_ir_df['scaled_interest_index'] = daily_ir_df['scaled_interest_index'].apply(
-        lambda x: mean_value if x <= 0 or x >= 100 else x
-    )
+    # # Handle out-of-bound values (replace ≤0 and ≥100 values with the mean)
+    # mean_value = interest_rate['scaled_interest_index'].mean()
+    # # Apply constraints: Replace values ≤ 0 or ≥ 100 with the mean value
+    # interest_rate['scaled_interest_index'] = interest_rate['scaled_interest_index'].apply(
+    #     lambda x: mean_value if x <= 0 or x >= 100 else x
+    # )
+
+    # only get the last (ceil(timeframe/30) + 1) months to resample, reducing data volume and workload
+    # ceil make sure past N months are captured (including current month)
+    # and the extra + 1 is to compensate for the possibly not included oldest month possible
+    daily_ir_df: pd.DataFrame = interest_rate.iloc[-(ceil(timeframe/30) + 1):]
+    daily_ir_df = daily_ir_df.resample('D').ffill()
     daily_ir_df.index = daily_ir_df.index.map(datetime.date)
-    return daily_ir_df[['scaled_interest_index']]
+    return daily_ir_df[['scaled_interest_index']].tail(n=timeframe+1)
 
 
 def calculate_buffet_indicator(mcap_data: pd.DataFrame) -> pd.DataFrame:
@@ -288,7 +295,7 @@ def average_indices(x: pd.Series, weight=None) -> float:
 
 
 def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataFrame, exchange_rate_data: pd.DataFrame,
-                                   interest_data: pd.DataFrame, bonds_data: pd.DataFrame, verbose=False):
+                                   interest_data: pd.DataFrame, bonds_data: pd.DataFrame, timeframe: int, verbose=False):
     # Calculate Market Momentum
     daily_momentum_index = calculate_market_momentum(daily_data)
 
@@ -308,7 +315,7 @@ def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataF
     exchange_rate_index = calculate_exchange_rate_index(exchange_rate_data)
 
     # Calculate Interest Rate Index
-    interest_rate_index = calculate_interest_rate_index(interest_data)
+    interest_rate_index = calculate_interest_rate_index(interest_data, timeframe)
 
     # Calculate Buffet Indicator Index
     buffet_indicator_index = calculate_buffet_indicator(mcap_data)
