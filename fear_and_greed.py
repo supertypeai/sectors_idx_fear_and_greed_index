@@ -37,11 +37,11 @@ def calculate_market_momentum(daily_data: pd.DataFrame) -> pd.DataFrame:
     daily_momentum_df = daily_momentum_df.dropna(subset=['momentum_sma'])
 
     # Scale the momentum to a 0-100 range for the Fear and Greed Index
-    daily_momentum_df['momentum_scaled'] = daily_momentum_df['momentum_sma'].apply(
+    daily_momentum_df['momentum'] = daily_momentum_df['momentum_sma'].apply(
         lambda x: scale_to_100(x, min_momentum, max_momentum))
 
     # Calculate the Market Momentum Index on a daily basis
-    daily_momentum_index = daily_momentum_df.groupby('date')['momentum_scaled'].mean().reset_index()
+    daily_momentum_index = daily_momentum_df.groupby('date')['momentum'].mean().reset_index()
     return daily_momentum_index
 
 
@@ -63,12 +63,12 @@ def calculate_stock_price_strength(daily_data: pd.DataFrame) -> pd.DataFrame:
     # Calculate the min and max of the SMA to normalize
     min_sma = daily_mean_strength_df['sma_7d_return'].min()
     max_sma = daily_mean_strength_df['sma_7d_return'].max()
-    daily_mean_strength_df['scaled_strength_index'] = daily_mean_strength_df['sma_7d_return'].apply(
+    daily_mean_strength_df['strength'] = daily_mean_strength_df['sma_7d_return'].apply(
         lambda x: scale_to_100(x, min_sma, max_sma))
 
-    daily_mean_strength_df = daily_mean_strength_df[['symbol', 'date', 'scaled_strength_index']].dropna()
-    # Group by 'date' and calculate the mean of 'scaled_strength_index' for each day
-    daily_mean_strength_index = daily_mean_strength_df.groupby('date')['scaled_strength_index'].mean().reset_index()
+    daily_mean_strength_df = daily_mean_strength_df[['symbol', 'date', 'strength']].dropna()
+    # Group by 'date' and calculate the mean of 'strength' for each day
+    daily_mean_strength_index = daily_mean_strength_df.groupby('date')['strength'].mean().reset_index()
 
     return daily_mean_strength_index
 
@@ -89,16 +89,16 @@ def calculate_volatility(daily_data: pd.DataFrame) -> pd.DataFrame:
     # Scale the volatility on a 0 to 100 scale for the fear and greed index context
     min_vol = df_copy_vol['volatility_7d'].min()
     max_vol = df_copy_vol['volatility_7d'].max()
-    df_copy_vol['scaled_volatility_index'] = df_copy_vol['volatility_7d'].apply(
+    df_copy_vol['volatility'] = df_copy_vol['volatility_7d'].apply(
         lambda x: scale_to_100(x, min_vol, max_vol))
 
-    df_copy_vol = df_copy_vol[['symbol', 'date', 'scaled_volatility_index']].dropna()
-    df_copy_vol = df_copy_vol.groupby('date')['scaled_volatility_index'].mean().reset_index()
+    df_copy_vol = df_copy_vol[['symbol', 'date', 'volatility']].dropna()
+    df_copy_vol = df_copy_vol.groupby('date')['volatility'].mean().reset_index()
 
     mean_value = \
-        df_copy_vol[(df_copy_vol['scaled_volatility_index'] != 0) & (df_copy_vol['scaled_volatility_index'] != 100)][
-            'scaled_volatility_index'].mean()
-    df_copy_vol['scaled_volatility_index'] = df_copy_vol['scaled_volatility_index'].replace([0, 100], mean_value)
+        df_copy_vol[(df_copy_vol['volatility'] != 0) & (df_copy_vol['volatility'] != 100)][
+            'volatility'].mean()
+    df_copy_vol['volatility'] = df_copy_vol['volatility'].replace([0, 100], mean_value)
 
     return df_copy_vol
 
@@ -141,13 +141,13 @@ def calculate_volume_breadth(daily_data: pd.DataFrame) -> pd.DataFrame:
     # Min and max for scaling
     min_vb = daily_volume['sma_7d_vb'].min()
     max_vb = daily_volume['sma_7d_vb'].max()
-    daily_volume['scaled_vb'] = daily_volume['sma_7d_vb'].apply(lambda x: scale_to_100(x, min_vb, max_vb))
+    daily_volume['volume_breadth'] = daily_volume['sma_7d_vb'].apply(lambda x: scale_to_100(x, min_vb, max_vb))
 
     # Replace 0 and 100 values with the mean
-    mean_scaled_vb = daily_volume['scaled_vb'].mean()
-    daily_volume['scaled_vb'] = daily_volume['scaled_vb'].apply(lambda x: mean_scaled_vb if x == 0 or x == 100 else x)
+    mean_volume_breadth = daily_volume['volume_breadth'].mean()
+    daily_volume['volume_breadth'] = daily_volume['volume_breadth'].apply(lambda x: mean_volume_breadth if x == 0 or x == 100 else x)
 
-    return daily_volume[['date', 'scaled_vb']]
+    return daily_volume[['date', 'volume_breadth']]
 
 
 def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFrame) -> pd.DataFrame:
@@ -176,14 +176,14 @@ def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFra
 
     # Scale the Safe Haven Demand Index to 0-100 for Fear and Greed context
     min_val, max_val = -1000, 1000  # Assume min/max range for scaling to 0-100
-    merged_data['safe_haven_scaled'] = merged_data['safe_haven_index'].apply(
+    merged_data['safe_haven'] = merged_data['safe_haven_index'].apply(
         lambda x: scale_to_100(x, min_val, max_val)
     )
-    mean_value = merged_data['safe_haven_scaled'].mean()
-    merged_data['safe_haven_scaled'] = merged_data['safe_haven_scaled'].apply(
+    mean_value = merged_data['safe_haven'].mean()
+    merged_data['safe_haven'] = merged_data['safe_haven'].apply(
         lambda x: mean_value if x <= 0 or x >= 100 else x
     )
-    return merged_data[['date', 'safe_haven_scaled']]
+    return merged_data[['date', 'safe_haven']]
 
 
 def calculate_exchange_rate_index(rate_data: pd.DataFrame) -> pd.DataFrame:
@@ -192,9 +192,9 @@ def calculate_exchange_rate_index(rate_data: pd.DataFrame) -> pd.DataFrame:
     er_df['SMA_7'] = er_df['rate'].rolling(window=7).mean()
     er_df['SMA_7'] = er_df['SMA_7'].fillna(er_df['SMA_7'].mean())
     scaler = MinMaxScaler(feature_range=(0, 100))
-    er_df['scaled_rate_index'] = scaler.fit_transform(er_df[['SMA_7']])
+    er_df['exchange_rate'] = scaler.fit_transform(er_df[['SMA_7']])
 
-    return er_df[['date', 'scaled_rate_index']]
+    return er_df[['date', 'exchange_rate']]
 
 
 def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int) -> pd.DataFrame:
@@ -220,12 +220,12 @@ def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int) -
     # Scale the Fear and Greed Index to a range between 0 and 100
     scaler = MinMaxScaler(feature_range=(0, 100))
     # Reshape for scaling to avoid any zero division issue and fit_transform safely
-    interest_rate['scaled_interest_index'] = scaler.fit_transform(interest_rate[['fear_greed_index']])
+    interest_rate['interest_rate'] = scaler.fit_transform(interest_rate[['fear_greed_index']])
 
     # # Handle out-of-bound values (replace ≤0 and ≥100 values with the mean)
-    # mean_value = interest_rate['scaled_interest_index'].mean()
+    # mean_value = interest_rate['interest_rate'].mean()
     # # Apply constraints: Replace values ≤ 0 or ≥ 100 with the mean value
-    # interest_rate['scaled_interest_index'] = interest_rate['scaled_interest_index'].apply(
+    # interest_rate['interest_rate'] = interest_rate['interest_rate'].apply(
     #     lambda x: mean_value if x <= 0 or x >= 100 else x
     # )
 
@@ -235,7 +235,7 @@ def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int) -
     daily_ir_df: pd.DataFrame = interest_rate.iloc[-(ceil(timeframe/30) + 1):]
     daily_ir_df = daily_ir_df.resample('D').ffill()
     daily_ir_df.index = daily_ir_df.index.map(datetime.date)
-    return daily_ir_df[['scaled_interest_index']].tail(n=timeframe+1)
+    return daily_ir_df[['interest_rate']].tail(n=timeframe+1)
 
 
 def calculate_buffet_indicator(mcap_data: pd.DataFrame) -> pd.DataFrame:
@@ -260,14 +260,14 @@ def calculate_buffet_indicator(mcap_data: pd.DataFrame) -> pd.DataFrame:
     # Scale the Buffett Indicator to a 0-100 range using MinMaxScaler
     scaler = MinMaxScaler(feature_range=(0, 100))
     # Scale by fitting and transforming on reshaped data
-    market_cap_df['buffett_scaled'] = scaler.fit_transform(market_cap_df[['buffett_SMA_7']])
+    market_cap_df['buffett'] = scaler.fit_transform(market_cap_df[['buffett_SMA_7']])
     # Step 4: Apply adjustments to keep values within 0-100 range and handle edge cases
-    mean_scaled_value = market_cap_df['buffett_scaled'].mean()
-    market_cap_df['buffett_scaled'] = market_cap_df['buffett_scaled'].apply(
+    mean_scaled_value = market_cap_df['buffett'].mean()
+    market_cap_df['buffett'] = market_cap_df['buffett'].apply(
         lambda x: mean_scaled_value if x <= 0 or x >= 100 else x
     )
 
-    return market_cap_df[['date', 'buffett_scaled']]
+    return market_cap_df[['date', 'buffett']]
 
 
 def average_indices(x: pd.Series, weight=None) -> float:
@@ -276,21 +276,21 @@ def average_indices(x: pd.Series, weight=None) -> float:
             'momentum': .125,
             'strength': .125,
             'volatility': .125,
-            'vb': .125,
+            'volume_breadth': .125,
             'safe_haven': .125,
-            'rate': .125,
-            'interest': .125,
+            'exchange_rate': .125,
+            'interest_rate': .125,
             'buffett': .125,
         }
     return (
-            x.momentum_scaled * weight['momentum'] +
-            x.scaled_strength_index * weight['strength'] +
-            x.scaled_volatility_index * weight['volatility'] +
-            x.scaled_vb * weight['vb'] +
-            x.safe_haven_scaled * weight['safe_haven'] +
-            x.scaled_rate_index * weight['rate'] +
-            x.scaled_interest_index * weight['interest'] +
-            x.buffett_scaled * weight['buffett']
+            x.momentum * weight['momentum'] +
+            x.strength * weight['strength'] +
+            x.volatility * weight['volatility'] +
+            x.volume_breadth * weight['volume_breadth'] +
+            x.safe_haven * weight['safe_haven'] +
+            x.exchange_rate * weight['exchange_rate'] +
+            x.interest_rate * weight['interest_rate'] +
+            x.buffett * weight['buffett']
     )
 
 
@@ -321,16 +321,6 @@ def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataF
     # Calculate Buffet Indicator Index
     buffet_indicator_index = calculate_buffet_indicator(mcap_data)
 
-    if verbose:
-        print(daily_momentum_index)
-        print(daily_mean_strength_index)
-        print(volatility_index)
-        print(daily_volume_index)
-        print(safe_haven_index)
-        print(exchange_rate_index)
-        print(interest_rate_index)
-        print(buffet_indicator_index)
-
     combined_indices = daily_momentum_index.set_index('date').join([
         daily_mean_strength_index.set_index('date'),
         volatility_index.set_index('date'),
@@ -345,5 +335,8 @@ def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataF
         lambda x: average_indices(x, weight),
         axis=1
     )
+
+    if verbose:
+        print(combined_indices.to_string())
 
     return combined_indices

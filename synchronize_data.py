@@ -126,14 +126,14 @@ def fetch_idr_usd_rate(timeframe: int = _ONE_WEEK):
     current_date = today
 
     while current_date >= latest_date:
-        url = (
-            f'https://openexchangerates.org/api/historical/{current_date}.json'
-            f'?app_id={_EXCHANGE_RATE_API_KEY}'
-            '&base=USD'
-            '&symbols=IDR'
-        )
+        url = f'https://openexchangerates.org/api/historical/{current_date}.json'
+        params = {
+            'app_id': _EXCHANGE_RATE_API_KEY,
+            'base': 'USD',
+            'symbols': 'IDR'
+        }
         print(url)
-        response = requests.get(url)
+        response = requests.get(url, params=params)
         data = response.json()
         new_record_timestamp = pd.Timestamp.fromtimestamp(float(data['timestamp']), _TIMEZONE)
         new_record = {
@@ -291,11 +291,24 @@ def fetch_temp_bonds_rate(timeframe: int = _ONE_WEEK):
 
         max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
         bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
-        interest_df = pd.concat([new_bonds_df, bonds_df], sort=True).drop_duplicates(subset=['date'], keep='first')
-        interest_df.to_csv('data/temp_bonds_rate.csv', index=False)
+        bonds_df = pd.concat([new_bonds_df, bonds_df], sort=True).drop_duplicates(subset=['date'], keep='first')
+        bonds_df.to_csv('data/temp_bonds_rate.csv', index=False)
 
     max_past_date = today - pd.Timedelta(timeframe, 'days')
     return bonds_df.loc[bonds_df['date'] > max_past_date]
+
+
+def push_to_db(fear_and_greed_index: pd.DataFrame, n_latest=1):
+    # Get n_latest last data (since the data is sorted oldest-latest)
+    latest_data: pd.DataFrame = fear_and_greed_index.iloc[-n_latest:]
+    # Create the date column from the index into ISO format for db insert
+    latest_data = latest_data.copy()
+    latest_data['date'] = latest_data.index
+    latest_data['date'] = latest_data['date'].apply(lambda x: x.isoformat())
+    # Convert to records
+    latest_data_dict = latest_data.to_dict(orient='records')
+    # Insert into db
+    supabase_client.table('idx_fear_and_greed').insert(latest_data_dict).execute()
 
 
 if __name__ == '__main__':

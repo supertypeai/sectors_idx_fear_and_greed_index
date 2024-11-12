@@ -1,14 +1,16 @@
 import json
 from argparse import ArgumentParser
 from fear_and_greed import *
-from fetch_historical_data import *
+from synchronize_data import *
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--timeframe', type=int, default=11)
+    parser.add_argument('-v', '--verbose', action='store_true')
 
     args = parser.parse_args()
-    timeframe = args.timeframe
+    timeframe: int = args.timeframe
+    verbose: bool = args.verbose
 
     daily_data = fetch_daily_data(timeframe)
     mcap_data = fetch_mcap_data(timeframe)
@@ -22,5 +24,6 @@ if __name__ == "__main__":
     fear_and_greed_index = calculate_fear_and_greed_index(daily_data, mcap_data,
                                                           exchange_rate_data, interest_data,
                                                           bonds_data,
-                                                          timeframe, weight, False)
-    print(fear_and_greed_index.to_string())
+                                                          timeframe, weight, verbose)
+
+    push_to_db(fear_and_greed_index, n_latest=30)
