@@ -1,3 +1,4 @@
+import json
 from argparse import ArgumentParser
 from fear_and_greed import *
 from fetch_historical_data import *
@@ -15,8 +16,11 @@ if __name__ == "__main__":
     interest_data = fetch_idr_interest_rate()
     bonds_data = fetch_temp_bonds_rate(timeframe)
 
+    with open('indices_weight.json') as f:
+        weight = json.load(f)
+
     fear_and_greed_index = calculate_fear_and_greed_index(daily_data, mcap_data,
                                                           exchange_rate_data, interest_data,
                                                           bonds_data,
-                                                          timeframe, False)
+                                                          timeframe, weight, False)
     print(fear_and_greed_index.to_string())

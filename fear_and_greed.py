@@ -295,7 +295,8 @@ def average_indices(x: pd.Series, weight=None) -> float:
 
 
 def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataFrame, exchange_rate_data: pd.DataFrame,
-                                   interest_data: pd.DataFrame, bonds_data: pd.DataFrame, timeframe: int, verbose=False):
+                                   interest_data: pd.DataFrame, bonds_data: pd.DataFrame,
+                                   timeframe: int, weight: dict[str, float], verbose=False):
     # Calculate Market Momentum
     daily_momentum_index = calculate_market_momentum(daily_data)
 
@@ -341,7 +342,7 @@ def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataF
     ])
 
     combined_indices['fear_and_greed_index'] = combined_indices.apply(
-        lambda x: average_indices(x),
+        lambda x: average_indices(x, weight),
         axis=1
     )
 
