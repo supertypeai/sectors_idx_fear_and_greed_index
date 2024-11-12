@@ -145,7 +145,8 @@ def calculate_volume_breadth(daily_data: pd.DataFrame) -> pd.DataFrame:
 
     # Replace 0 and 100 values with the mean
     mean_volume_breadth = daily_volume['volume_breadth'].mean()
-    daily_volume['volume_breadth'] = daily_volume['volume_breadth'].apply(lambda x: mean_volume_breadth if x == 0 or x == 100 else x)
+    daily_volume['volume_breadth'] = daily_volume['volume_breadth'].apply(
+        lambda x: mean_volume_breadth if x == 0 or x == 100 else x)
 
     return daily_volume[['date', 'volume_breadth']]
 
@@ -232,10 +233,10 @@ def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int) -
     # only get the last (ceil(timeframe/30) + 1) months to resample, reducing data volume and workload
     # ceil make sure past N months are captured (including current month)
     # and the extra + 1 is to compensate for the possibly not included oldest month possible
-    daily_ir_df: pd.DataFrame = interest_rate.iloc[-(ceil(timeframe/30) + 1):]
+    daily_ir_df: pd.DataFrame = interest_rate.iloc[-(ceil(timeframe / 30) + 1):]
     daily_ir_df = daily_ir_df.resample('D').ffill()
     daily_ir_df.index = daily_ir_df.index.map(datetime.date)
-    return daily_ir_df[['interest_rate']].tail(n=timeframe+1)
+    return daily_ir_df[['interest_rate']].tail(n=timeframe + 1)
 
 
 def calculate_buffet_indicator(mcap_data: pd.DataFrame) -> pd.DataFrame:
@@ -296,7 +297,7 @@ def average_indices(x: pd.Series, weight=None) -> float:
 
 def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataFrame, exchange_rate_data: pd.DataFrame,
                                    interest_data: pd.DataFrame, bonds_data: pd.DataFrame,
-                                   timeframe: int, weight: dict[str, float], verbose=False):
+                                   timeframe: int, weight: dict[str, float] = None, verbose=False):
     # Calculate Market Momentum
     daily_momentum_index = calculate_market_momentum(daily_data)
 
