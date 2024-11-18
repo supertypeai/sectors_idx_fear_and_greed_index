@@ -2,7 +2,7 @@ name: Scrape Daily Bonds Data
 
 on:
   schedule:
-    - cron: '0 18 * * *'  # Schedule to run at 1:00 AM GMT+7 every day
+    - cron: '0 18 * * 1-5'  # Schedule to run at 1:00 AM UTC+7 every weekday
   workflow_dispatch:
 
 jobs:
