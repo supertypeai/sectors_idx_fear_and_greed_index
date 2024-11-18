@@ -1,7 +1,8 @@
 import json
 from argparse import ArgumentParser
-from fear_and_greed import *
-from synchronize_data import *
+from fear_and_greed import FearAndGreedIndex
+from synchronize_data import fetch_daily_data, fetch_mcap_data, fetch_idr_usd_rate, fetch_temp_bonds_rate, \
+    fetch_idr_interest_rate, push_to_db
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -27,13 +28,16 @@ if __name__ == "__main__":
     interest_data = fetch_idr_interest_rate()
     bonds_data = fetch_temp_bonds_rate(timeframe)
 
-    with open('indices_weight.json') as f:
+    with open('parameters/indices_weight.json') as f:
         weight = json.load(f)
 
-    fear_and_greed_index = calculate_fear_and_greed_index(daily_data, mcap_data,
-                                                          exchange_rate_data, interest_data,
-                                                          bonds_data,
-                                                          timeframe, avg_period, weight, verbose)
+    with open('parameters/average_methods.json') as f:
+        moving_avg_methods = json.load(f)
+
+    fear_and_greed_index = FearAndGreedIndex(daily_data, mcap_data, exchange_rate_data, interest_data, bonds_data)
+    fear_and_greed_index.set_weight(weight)
+    fear_and_greed_index.set_moving_avg_method(moving_avg_methods)
+    fear_and_greed_data = fear_and_greed_index.calculate_fear_and_greed_index(timeframe, avg_period, verbose)
 
     if store_db > 0:
-        push_to_db(fear_and_greed_index, n_latest=store_db)
+        push_to_db(fear_and_greed_data, n_latest=store_db)

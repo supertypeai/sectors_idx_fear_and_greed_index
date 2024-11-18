@@ -1,10 +1,10 @@
 {
   "momentum": 0.17582075,
-  "volatility": 0.11454247,
   "strength": 0.16891454,
-  "buffett": 0.05444091,
+  "volatility": 0.11454247,
   "volume_breadth": 0.17147319,
   "safe_haven": 0.03433208,
   "exchange_rate": 0.26419596,
-  "interest_rate": 0.01628012
+  "interest_rate": 0.01628012,
+  "buffett": 0.05444091
 }

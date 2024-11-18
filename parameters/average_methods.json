@@ -1,0 +1,10 @@
+{
+  "momentum": "sma",
+  "strength": "sma",
+  "volatility": "sma",
+  "volume_breadth": "sma",
+  "safe_haven": "sma",
+  "exchange_rate": "sma",
+  "interest_rate": "sma",
+  "buffett": "sma"
+}

@@ -72,14 +72,14 @@ def normalize_data(data: pd.Series, handle_na: str = None, fill_na: float = None
     return data
 
 
-def calculate_market_momentum(daily_data: pd.DataFrame, avg_period: int) -> pd.DataFrame:
+def calculate_market_momentum(daily_data: pd.DataFrame, avg_period: int, avg_method: str = 'sma') -> pd.DataFrame:
     min_momentum = -5
     max_momentum = 5
 
     daily_momentum_df = daily_data.copy()
     # Calculate SMA for each stock
     daily_momentum_df['sma'] = daily_momentum_df.groupby('symbol')['close'].transform(
-        lambda x: calculate_moving_average(x, avg_period, 1, 'sma'))
+        lambda x: calculate_moving_average(x, avg_period, 1, avg_method))
 
     # Calculate the percentage difference from the SMA
     # Small constant to avoid division by zero
@@ -99,7 +99,7 @@ def calculate_market_momentum(daily_data: pd.DataFrame, avg_period: int) -> pd.D
     return daily_momentum_index
 
 
-def calculate_stock_price_strength(daily_data: pd.DataFrame, avg_period: int) -> pd.DataFrame:
+def calculate_stock_price_strength(daily_data: pd.DataFrame, avg_period: int, avg_method: str = 'sma') -> pd.DataFrame:
     daily_mean_strength_df = daily_data.copy()
 
     # Calculate the daily percentage change in 'close' price for each symbol on the copy
@@ -107,7 +107,7 @@ def calculate_stock_price_strength(daily_data: pd.DataFrame, avg_period: int) ->
 
     # Calculate SMA
     daily_mean_strength_df['strength'] = daily_mean_strength_df.groupby('symbol')['daily_return'].transform(
-        lambda x: calculate_moving_average(x, avg_period, avg_method='sma'))
+        lambda x: calculate_moving_average(x, avg_period, avg_method=avg_method))
 
     # Clean and normalize data
     daily_mean_strength_df['strength'] = normalize_data(daily_mean_strength_df['strength'],
@@ -119,14 +119,14 @@ def calculate_stock_price_strength(daily_data: pd.DataFrame, avg_period: int) ->
     return daily_mean_strength_index[['date', 'strength']]
 
 
-def calculate_volatility(daily_data: pd.DataFrame, avg_period: int) -> pd.DataFrame:
+def calculate_volatility(daily_data: pd.DataFrame, avg_period: int, avg_method: str = 'sma') -> pd.DataFrame:
     df_copy_vol = daily_data.copy()
     # Calculate the daily percentage change in 'close' price for each symbol
     df_copy_vol['daily_return'] = df_copy_vol.groupby('symbol')['close'].pct_change()
 
     # Calculate the 7-day rolling standard deviation (volatility) of the daily returns for each symbol
     volatility_7d = df_copy_vol.groupby('symbol')['daily_return'].transform(
-        lambda x: x.rolling(window=avg_period).std())
+        lambda x: calculate_moving_average(x, avg_period, avg_method=avg_method, metric='std'))
 
     # Clean and normalize data
     df_copy_vol['volatility'] = normalize_data(volatility_7d, handle_na='fill', fill_na=0, scale=(0, 0), inplace=True)
@@ -141,7 +141,7 @@ def calculate_volatility(daily_data: pd.DataFrame, avg_period: int) -> pd.DataFr
     return df_copy_vol
 
 
-def calculate_volume_breadth(daily_data: pd.DataFrame, avg_period: int) -> pd.DataFrame:
+def calculate_volume_breadth(daily_data: pd.DataFrame, avg_period: int, avg_method: str = 'sma') -> pd.DataFrame:
     df_vb_copy = daily_data.copy()
 
     # Identify advancing and declining stocks
@@ -169,7 +169,7 @@ def calculate_volume_breadth(daily_data: pd.DataFrame, avg_period: int) -> pd.Da
     )
 
     # Apply the SMA to the Volume Breadth to smooth the values
-    sma_7d_vb = calculate_moving_average(daily_volume['volume_breadth'], avg_period, avg_method='sma')
+    sma_7d_vb = calculate_moving_average(daily_volume['volume_breadth'], avg_period, avg_method=avg_method)
 
     # Clean and normalize data
     daily_volume['volume_breadth'] = normalize_data(sma_7d_vb, handle_na='fill', fill_na=0, scale=(0, 0), inplace=True)
@@ -182,7 +182,8 @@ def calculate_volume_breadth(daily_data: pd.DataFrame, avg_period: int) -> pd.Da
     return daily_volume[['date', 'volume_breadth']]
 
 
-def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFrame, avg_period: int) -> pd.DataFrame:
+def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFrame, avg_period: int,
+                                avg_method: str = 'sma') -> pd.DataFrame:
     df_idx_shd = daily_data.copy()
     df_idx_shd = df_idx_shd.sort_values(by=['symbol', 'date'])
     df_idx_shd['stock_return'] = df_idx_shd.groupby('symbol')['close'].pct_change()
@@ -196,9 +197,9 @@ def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFra
 
     # Calculate the SMA for stocks and bonds rate
     sma_stock = calculate_moving_average(merged_data['average_stock_return'], avg_period, 1,
-                                         avg_method='sma', metric='mean')
+                                         avg_method=avg_method, metric='mean')
     sma_rate = calculate_moving_average(merged_data['rate'], avg_period, 1,
-                                        avg_method='sma', metric='mean')
+                                        avg_method=avg_method, metric='mean')
 
     epsilon = 1e-9  # Small constant to avoid zero division errors
     stock_return = (merged_data['average_stock_return'] - sma_stock) / (sma_stock + epsilon)
@@ -219,19 +220,19 @@ def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFra
     return merged_data[['date', 'safe_haven']]
 
 
-def calculate_exchange_rate_index(rate_data: pd.DataFrame, avg_period: int) -> pd.DataFrame:
+def calculate_exchange_rate_index(rate_data: pd.DataFrame, avg_period: int, avg_method: str = 'sma') -> pd.DataFrame:
     er_df = rate_data.copy()
     # Sort the data based on date to ensure the SMA are calculated from oldest to latest
     er_df = er_df.sort_values('date', ascending=True)
 
     # Calculate the SMA and normalize
-    sma = calculate_moving_average(er_df['rate'], avg_period, avg_method='sma', metric='mean')
+    sma = calculate_moving_average(er_df['rate'], avg_period, avg_method=avg_method, metric='mean')
     er_df['exchange_rate'] = normalize_data(sma, handle_na='mean', scale=(0, 0), inplace=True)
 
     return er_df[['date', 'exchange_rate']]
 
 
-def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int) -> pd.DataFrame:
+def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int, avg_method: str = 'sma') -> pd.DataFrame:
     interest_rate = interest_data.copy()
     interest_rate['date'] = pd.to_datetime(interest_rate['date'])
     interest_rate = interest_rate.sort_values('date', ascending=True)
@@ -246,7 +247,7 @@ def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int) -
         interest_rate = pd.concat([interest_rate, new_row])
 
     # Calculate the 3-month Simple Moving Average (SMA)
-    sma = calculate_moving_average(interest_rate['rate'], 3, avg_method='sma', metric='mean')
+    sma = calculate_moving_average(interest_rate['rate'], 3, avg_method=avg_method, metric='mean')
     # Calculate the Fear and Greed Index as the difference between the rate and the SMA
     sma_diff = interest_rate['rate'] - sma
 
@@ -262,12 +263,13 @@ def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int) -
     return daily_ir_df[['interest_rate']].tail(n=timeframe + 1)
 
 
-def calculate_buffet_indicator(mcap_data: pd.DataFrame, avg_period: int) -> pd.DataFrame:
+def calculate_buffet_indicator(mcap_data: pd.DataFrame, avg_period: int, avg_method: str = 'sma') -> pd.DataFrame:
     market_cap_df = mcap_data.copy()
     market_cap_df = market_cap_df[['date', 'idx_total_market_cap']]
 
     # Calculate the Simple Moving Average (SMA) of the Buffett Indicator
-    sma = calculate_moving_average(market_cap_df['idx_total_market_cap'], avg_period, avg_method='sma', metric='mean')
+    sma = calculate_moving_average(market_cap_df['idx_total_market_cap'], avg_period, avg_method=avg_method,
+                                   metric='mean')
     # Clean and normalize the data
     market_cap_df['buffett'] = normalize_data(sma, handle_na='mean', scale=(0, 0), inplace=True)
 
@@ -281,73 +283,108 @@ def calculate_buffet_indicator(mcap_data: pd.DataFrame, avg_period: int) -> pd.D
     return market_cap_df[['date', 'buffett']]
 
 
-def average_indices(x: pd.Series, weight=None) -> float:
-    if weight is None:
-        weight = {
-            'momentum': .125,
-            'strength': .125,
-            'volatility': .125,
-            'volume_breadth': .125,
-            'safe_haven': .125,
-            'exchange_rate': .125,
-            'interest_rate': .125,
-            'buffett': .125,
-        }
-    return (
-            x.momentum * weight['momentum'] +
-            x.strength * weight['strength'] +
-            x.volatility * weight['volatility'] +
-            x.volume_breadth * weight['volume_breadth'] +
-            x.safe_haven * weight['safe_haven'] +
-            x.exchange_rate * weight['exchange_rate'] +
-            x.interest_rate * weight['interest_rate'] +
-            x.buffett * weight['buffett']
-    )
+class FearAndGreedIndex:
+    _DEFAULT_WEIGHT = {
+        'momentum': .125,
+        'strength': .125,
+        'volatility': .125,
+        'volume_breadth': .125,
+        'safe_haven': .125,
+        'exchange_rate': .125,
+        'interest_rate': .125,
+        'buffett': .125,
+    }
 
+    _DEFAULT_AVG_METHOD = {
+        'momentum': 'sma',
+        'strength': 'sma',
+        'volatility': 'sma',
+        'volume_breadth': 'sma',
+        'safe_haven': 'sma',
+        'exchange_rate': 'sma',
+        'interest_rate': 'sma',
+        'buffett': 'sma',
+    }
 
-def calculate_fear_and_greed_index(daily_data: pd.DataFrame, mcap_data: pd.DataFrame, exchange_rate_data: pd.DataFrame,
-                                   interest_data: pd.DataFrame, bonds_data: pd.DataFrame,
-                                   timeframe: int, avg_period: int = 7, weight: dict[str, float] = None, verbose=False):
-    # Calculate Market Momentum
-    daily_momentum_index = calculate_market_momentum(daily_data, avg_period)
+    def __init__(self, daily_data: pd.DataFrame, mcap_data: pd.DataFrame, exchange_rate_data: pd.DataFrame,
+                 interest_data: pd.DataFrame, bonds_data: pd.DataFrame):
+        # Indices data
+        self._daily_data = daily_data
+        self._mcap_data = mcap_data
+        self._exchange_rate_data = exchange_rate_data
+        self._interest_data = interest_data
+        self._bonds_data = bonds_data
 
-    # Calculate Stock Price Strength
-    daily_mean_strength_index = calculate_stock_price_strength(daily_data, avg_period)
+        # Auxiliary parameters
+        self._avg_method: dict[str, str] = self._DEFAULT_AVG_METHOD
+        self._weight: dict[str, float] = self._DEFAULT_WEIGHT
 
-    # Calculate Volatility
-    volatility_index = calculate_volatility(daily_data, avg_period)
+    def set_weight(self, weight: dict[str, float]):
+        self._weight = weight
 
-    # Calculate Volume Breadth
-    daily_volume_index = calculate_volume_breadth(daily_data, avg_period)
+    def set_moving_avg_method(self, moving_avg_method: dict[str, str]):
+        self._avg_method = moving_avg_method
 
-    # Calculate Safe Haven Demand
-    safe_haven_index = calculate_safe_haven_demand(daily_data, bonds_data, avg_period)
+    @staticmethod
+    def _average_indices(x: pd.Series, weight=None) -> float:
+        if weight is None:
+            weight = FearAndGreedIndex._DEFAULT_WEIGHT
+        return (
+                x.momentum * weight['momentum'] +
+                x.strength * weight['strength'] +
+                x.volatility * weight['volatility'] +
+                x.volume_breadth * weight['volume_breadth'] +
+                x.safe_haven * weight['safe_haven'] +
+                x.exchange_rate * weight['exchange_rate'] +
+                x.interest_rate * weight['interest_rate'] +
+                x.buffett * weight['buffett']
+        )
 
-    # Calculate Exchange Rate Index
-    exchange_rate_index = calculate_exchange_rate_index(exchange_rate_data, avg_period)
+    def calculate_fear_and_greed_index(self, timeframe: int, avg_period: int = 7, verbose=False):
+        # Calculate Market Momentum
+        daily_momentum_index = calculate_market_momentum(self._daily_data, avg_period, self._avg_method['momentum'])
 
-    # Calculate Interest Rate Index
-    interest_rate_index = calculate_interest_rate_index(interest_data, timeframe)
+        # Calculate Stock Price Strength
+        daily_mean_strength_index = calculate_stock_price_strength(self._daily_data, avg_period,
+                                                                   self._avg_method['strength'])
 
-    # Calculate Buffet Indicator Index
-    buffet_indicator_index = calculate_buffet_indicator(mcap_data, avg_period)
+        # Calculate Volatility
+        volatility_index = calculate_volatility(self._daily_data, avg_period, self._avg_method['volatility'])
 
-    combined_indices = daily_momentum_index.set_index('date').join([
-        daily_mean_strength_index.set_index('date'),
-        volatility_index.set_index('date'),
-        daily_volume_index.set_index('date'),
-        safe_haven_index.set_index('date'),
-        exchange_rate_index.set_index('date'),
-        interest_rate_index,
-        buffet_indicator_index.set_index('date')
-    ])
+        # Calculate Volume Breadth
+        daily_volume_index = calculate_volume_breadth(self._daily_data, avg_period, self._avg_method['volume_breadth'])
 
-    combined_indices['fear_and_greed_index'] = combined_indices.apply(
-        lambda x: average_indices(x, weight),
-        axis=1
-    )
+        # Calculate Safe Haven Demand
+        safe_haven_index = calculate_safe_haven_demand(self._daily_data, self._bonds_data, avg_period,
+                                                       self._avg_method['safe_haven'])
 
-    if verbose:
-        print(combined_indices.to_string())
+        # Calculate Exchange Rate Index
+        exchange_rate_index = calculate_exchange_rate_index(self._exchange_rate_data, avg_period,
+                                                            self._avg_method['exchange_rate'])
 
-    return combined_indices
+        # Calculate Interest Rate Index
+        interest_rate_index = calculate_interest_rate_index(self._interest_data, timeframe,
+                                                            self._avg_method['interest_rate'])
+
+        # Calculate Buffet Indicator Index
+        buffet_indicator_index = calculate_buffet_indicator(self._mcap_data, avg_period, self._avg_method['buffett'])
+
+        combined_indices = daily_momentum_index.set_index('date').join([
+            daily_mean_strength_index.set_index('date'),
+            volatility_index.set_index('date'),
+            daily_volume_index.set_index('date'),
+            safe_haven_index.set_index('date'),
+            exchange_rate_index.set_index('date'),
+            interest_rate_index,
+            buffet_indicator_index.set_index('date')
+        ])
+
+        combined_indices['fear_and_greed_index'] = combined_indices.apply(
+            lambda x: self._average_indices(x, self._weight),
+            axis=1
+        )
+
+        if verbose:
+            print(combined_indices.to_string())
+
+        return combined_indices

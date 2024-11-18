@@ -11,11 +11,17 @@ Calculates the Fear and Greed Index for Indonesian stock market.
 
 ## Data Processing
 Data are stored locally in CSV format at [data directory](./data), and are updated periodically along with the daily calculation.
-Data fetching call in [synchronize_data.py](./synchronize_data.py) automatically updates the dataset and store it in the local files.
+Data fetching calls in [synchronize_data.py](./synchronize_data.py) automatically updates the dataset and store it in the local files.
 
 Fear and Greed indices calculation are done in [fear_and_greed.py](./fear_and_greed.py)
 
 Table schema in the database can be found at the [schema file](./schema.sql)
+
+## Parameters
+Index calculation parameters can be modified and tuned in the [parameters](./parameters) directory
+* Tune the indices weighting with the [indices_weight.json](./parameters/indices_weight.json) file
+* Tune the moving average method with the [average_methods.json](./parameters/average_methods.json) file \
+  This can be used to modify the moving average methods used i.e. Simple Moving Average (SMA) or Exponential Moving Average (EMA)
 
 ## Jobs
 * [Indonesian bonds yield scraping (temporary)](./.github/workflows/scrape-bonds-data.yaml):
