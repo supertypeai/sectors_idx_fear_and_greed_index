@@ -42,6 +42,8 @@ _INDOBEX_NAME_ENUM = {
     'INDOBeX Composite Gross Yield': 'INDOBeX-GY',
 }
 
+_DAILY_DATA_PAGE_SIZE = 90
+_MCAP_DATA_PAGE_SIZE = 90
 
 @contextmanager
 def override_locale(category, locale_string):
@@ -77,37 +79,59 @@ def fetch_daily_data(timeframe: int = _ONE_WEEK):
     idx30_tickers = [row[0] for row in csv_reader]
     idx30_tickers = idx30_tickers[1:]
 
-    max_past_date = pd.Timestamp.now() - pd.Timedelta(timeframe, 'days')
+    records: list[dict] = []
+    current_date = pd.Timestamp.now()
+    remaining_timeframe = timeframe
+    while remaining_timeframe > 0:
+        timedelta = _DAILY_DATA_PAGE_SIZE if remaining_timeframe >= _DAILY_DATA_PAGE_SIZE else remaining_timeframe
+        max_past_date = current_date - pd.Timedelta(timedelta, 'days')
 
-    response = (supabase_client.table('idx_daily_data')
-                .select('symbol, date, close, volume, market_cap')
-                .gte('date', max_past_date.date())
-                .in_('symbol', idx30_tickers)
-                .execute())
+        response = (supabase_client.table('idx_daily_data')
+                    .select('symbol, date, close, volume, market_cap')
+                    .gte('date', max_past_date.date())
+                    .lte('date', current_date.date())
+                    .in_('symbol', idx30_tickers)
+                    .execute())
+        records += response.data
 
-    daily_data = pd.DataFrame(response.data)
+        current_date = max_past_date - pd.Timedelta(1, 'days')
+        remaining_timeframe -= timedelta
+
+    daily_data = pd.DataFrame(records)
     daily_data['date'] = pd.to_datetime(daily_data['date']).dt.date
     return daily_data
 
 
 def fetch_mcap_data(timeframe: int = _ONE_WEEK):
+
     url = 'https://api.sectors.app/v1/idx-total/'
-
-    today = pd.Timestamp.now()
-    max_past_date = today - pd.Timedelta(timeframe, 'days')
-
     headers = {
         'Authorization': _SECTORS_API_KEY,
     }
-    params = {
-        'start': max_past_date.date().strftime('%Y-%m-%d'),
-        'end': today.date().strftime('%Y-%m-%d')
-    }
 
-    response = requests.get(url, params=params, headers=headers)
+    records: list[dict] = []
+    current_date = pd.Timestamp.now()
+    remaining_timeframe = timeframe
+    while remaining_timeframe > 0:
+        timedelta = _MCAP_DATA_PAGE_SIZE if remaining_timeframe >= _MCAP_DATA_PAGE_SIZE else remaining_timeframe
+        max_past_date = current_date - pd.Timedelta(timedelta, 'days')
+        params = {
+            'start': max_past_date.date().strftime('%Y-%m-%d'),
+            'end': current_date.date().strftime('%Y-%m-%d')
+        }
 
-    data = response.json()
-    mcap_data = pd.DataFrame.from_records(data)
+        response = requests.get(url, params=params, headers=headers)
+
+        # Append the new data into the records
+        data = response.json()
+        records += data
+
+        # Decrease the date and the remaining timeframe
+        current_date = max_past_date - pd.Timedelta(1, 'days')
+        remaining_timeframe -= timedelta
+
+    # Combine the records into a dataframe
+    mcap_data = pd.DataFrame.from_records(records)
     mcap_data['date'] = pd.to_datetime(mcap_data['date']).dt.date
     return mcap_data
 
@@ -197,7 +221,8 @@ def fetch_idr_interest_rate(timeframe: int = _ONE_YEAR):
                        .drop_duplicates(subset=['date'], keep='first'))
         interest_df.to_csv('data/interest_rate.csv', index=False)
 
-    max_past_date = today - pd.Timedelta(timeframe, 'days')
+    # Add additional +45 days of padding to include previous month in case of long interval
+    max_past_date = today - pd.Timedelta(timeframe + 45, 'days')
     return interest_df.loc[interest_df['date'] > max_past_date]
 
 
