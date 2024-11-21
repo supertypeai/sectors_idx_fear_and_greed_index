@@ -237,10 +237,11 @@ def calculate_interest_rate_index(interest_data: pd.DataFrame, timeframe: int, a
     interest_rate['date'] = pd.to_datetime(interest_rate['date'])
     interest_rate = interest_rate.sort_values('date', ascending=True)
     interest_rate.set_index('date', inplace=True)
-    end_date = datetime.now()
+    end_date = pd.Timestamp.now(tz='Asia/Bangkok')
+    end_date = end_date.tz_convert(None)
     latest_date = pd.Timestamp(interest_rate.index.max())
 
-    if latest_date.month < end_date.month:
+    if latest_date.date() < end_date.date():
         # Append the last available rate for the month to the current date of end_date's month if missing
         last_rate = interest_rate['rate'].iloc[-1]
         new_row = pd.DataFrame({'rate': [last_rate]}, index=[end_date])

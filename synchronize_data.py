@@ -92,18 +92,18 @@ def fetch_daily_data(timeframe: int = _ONE_WEEK):
                     .lte('date', current_date.date())
                     .in_('symbol', idx30_tickers)
                     .execute())
-        records += response.data
+        records = response.data + records
 
         current_date = max_past_date - pd.Timedelta(1, 'days')
         remaining_timeframe -= timedelta
 
     daily_data = pd.DataFrame(records)
     daily_data['date'] = pd.to_datetime(daily_data['date']).dt.date
+    # Assuming that data is sorted by date ascending from DB, no need to sort
     return daily_data
 
 
 def fetch_mcap_data(timeframe: int = _ONE_WEEK):
-
     url = 'https://api.sectors.app/v1/idx-total/'
     headers = {
         'Authorization': _SECTORS_API_KEY,
@@ -124,7 +124,7 @@ def fetch_mcap_data(timeframe: int = _ONE_WEEK):
 
         # Append the new data into the records
         data = response.json()
-        records += data
+        records = data + records
 
         # Decrease the date and the remaining timeframe
         current_date = max_past_date - pd.Timedelta(1, 'days')
@@ -133,6 +133,7 @@ def fetch_mcap_data(timeframe: int = _ONE_WEEK):
     # Combine the records into a dataframe
     mcap_data = pd.DataFrame.from_records(records)
     mcap_data['date'] = pd.to_datetime(mcap_data['date']).dt.date
+    # Assuming data is sorted by date ascending, no need to sort
     return mcap_data
 
 
@@ -190,7 +191,7 @@ def fetch_idr_interest_rate(timeframe: int = _ONE_YEAR):
     interest_df['date'] = pd.to_datetime(interest_df['date']).dt.date
 
     latest_date: datetime.date = interest_df['date'].max()
-    today = pd.Timestamp.now(tz=_TIMEZONE).date()
+    today = pd.Timestamp.now(tz=_LOCAL_TIMEZONE).date()
 
     current_date = today
 
@@ -323,6 +324,40 @@ def fetch_temp_bonds_rate(timeframe: int = _ONE_WEEK):
     return bonds_df.loc[bonds_df['date'] > max_past_date]
 
 
+def fetch_ihsg_data(timeframe: int = _ONE_WEEK):
+    url = 'https://api.sectors.app/v1/index-daily/ihsg/'
+    headers = {
+        'Authorization': _SECTORS_API_KEY,
+    }
+
+    records: list[dict] = []
+    current_date = pd.Timestamp.now()
+    remaining_timeframe = timeframe
+    while remaining_timeframe > 0:
+        timedelta = _MCAP_DATA_PAGE_SIZE if remaining_timeframe >= _MCAP_DATA_PAGE_SIZE else remaining_timeframe
+        max_past_date = current_date - pd.Timedelta(timedelta, 'days')
+        params = {
+            'start': max_past_date.date().strftime('%Y-%m-%d'),
+            'end': current_date.date().strftime('%Y-%m-%d')
+        }
+
+        response = requests.get(url, params=params, headers=headers)
+
+        # Append the new data into the records
+        data = response.json()
+        records = data + records
+
+        # Decrease the date and the remaining timeframe
+        current_date = max_past_date - pd.Timedelta(1, 'days')
+        remaining_timeframe -= timedelta
+
+    # Combine the records into a dataframe
+    ihsg_data = pd.DataFrame.from_records(records)
+    ihsg_data['date'] = pd.to_datetime(ihsg_data['date']).dt.date
+    # Assuming data is sorted by date ascending, no need to sort
+    return ihsg_data
+
+
 def push_to_db(fear_and_greed_index: pd.DataFrame, n_latest=1):
     # Get n_latest last data (since the data is sorted oldest-latest)
     latest_data: pd.DataFrame = fear_and_greed_index.iloc[-n_latest:]
@@ -349,3 +384,5 @@ if __name__ == '__main__':
     print(bonds_df)
     temp_bonds_df = fetch_temp_bonds_rate()
     print(temp_bonds_df)
+    ihsg_data = fetch_ihsg_data()
+    print(ihsg_data)
