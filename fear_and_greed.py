@@ -4,11 +4,11 @@ import pandas as pd
 from datetime import datetime
 from math import ceil
 
+_EPSILON = 1e-9  # Small constant to avoid zero division errors
+
 
 def scale_to_100(value, min_val, max_val):
-    epsilon = 1e-9
-
-    if value - min_val < epsilon:
+    if value - min_val < _EPSILON:
         scaled_value = 0
     else:
         scaled_value = (value - min_val) / (max_val - min_val) * 100
@@ -73,26 +73,17 @@ def normalize_data(data: pd.Series, handle_na: str = None, fill_na: float = None
 
 
 def calculate_market_momentum(daily_data: pd.DataFrame, avg_period: int, avg_method: str = 'sma') -> pd.DataFrame:
-    min_momentum = -5
-    max_momentum = 5
-
     daily_momentum_df = daily_data.copy()
     # Calculate SMA for each stock
     daily_momentum_df['sma'] = daily_momentum_df.groupby('symbol')['close'].transform(
         lambda x: calculate_moving_average(x, avg_period, 1, avg_method))
 
     # Calculate the percentage difference from the SMA
-    # Small constant to avoid division by zero
-    epsilon = 1e-9
-    daily_momentum_df['momentum_sma'] = ((daily_momentum_df['close'] - daily_momentum_df['sma']) / (
-            daily_momentum_df['sma'] + epsilon)) * 100
+    daily_momentum_sma_chg = ((daily_momentum_df['close'] - daily_momentum_df['sma']) / (
+            daily_momentum_df['sma'] + _EPSILON))
 
-    # Remove any NaNs in case any
-    daily_momentum_df = daily_momentum_df.dropna(subset=['momentum_sma'])
-
-    # Scale the momentum to a 0-100 range for the Fear and Greed Index
-    daily_momentum_df['momentum'] = daily_momentum_df['momentum_sma'].apply(
-        lambda x: scale_to_100(x, min_momentum, max_momentum))
+    # Normalize and scale data
+    daily_momentum_df['momentum'] = normalize_data(daily_momentum_sma_chg, handle_na='drop', scale=(0, 0))
 
     # Calculate the Market Momentum Index on a daily basis
     daily_momentum_index = daily_momentum_df.groupby('date')['momentum'].mean().reset_index()
@@ -125,11 +116,12 @@ def calculate_volatility(daily_data: pd.DataFrame, avg_period: int, avg_method: 
     df_copy_vol['daily_return'] = df_copy_vol.groupby('symbol')['close'].pct_change()
 
     # Calculate the 7-day rolling standard deviation (volatility) of the daily returns for each symbol
-    volatility_7d = df_copy_vol.groupby('symbol')['daily_return'].transform(
-        lambda x: calculate_moving_average(x, avg_period, avg_method=avg_method, metric='std'))
+    def calculate_sma_and_clean(x):
+        volatility_7d = calculate_moving_average(x, avg_period, avg_method=avg_method, metric='std')
+        return normalize_data(volatility_7d, handle_na='fill', fill_na=0, scale=(0, 0), inplace=True)
 
-    # Clean and normalize data
-    df_copy_vol['volatility'] = normalize_data(volatility_7d, handle_na='fill', fill_na=0, scale=(0, 0), inplace=True)
+    df_copy_vol['volatility'] = df_copy_vol.groupby('symbol')['daily_return'].transform(
+        lambda x: calculate_sma_and_clean(x))
 
     df_copy_vol = df_copy_vol.groupby('date')['volatility'].mean().reset_index()
 
@@ -163,21 +155,19 @@ def calculate_volume_breadth(daily_data: pd.DataFrame, avg_period: int, avg_meth
 
     # Calculate Volume Breadth
     # Avoid division by zero by handling cases where declining volume is zero
-    daily_volume['volume_breadth'] = daily_volume.apply(
-        lambda row: row['advancing_volume'] / row['declining_volume'] if row['declining_volume'] != 0 else np.nan,
+    daily_volume['vb_ratio'] = daily_volume.apply(
+        lambda row: row['advancing_volume'] / row['declining_volume'] if row['declining_volume'] != 0 and row['advancing_volume'] != 0 else _EPSILON,
         axis=1
     )
 
+    # log scale the ratio to smoothen data for linear scaling
+    daily_volume['vb_log_scaled'] = np.log(daily_volume['vb_ratio'])
+
     # Apply the SMA to the Volume Breadth to smooth the values
-    sma_7d_vb = calculate_moving_average(daily_volume['volume_breadth'], avg_period, avg_method=avg_method)
+    daily_volume['sma_7d_vb'] = calculate_moving_average(daily_volume['vb_log_scaled'], avg_period, avg_method=avg_method)
 
     # Clean and normalize data
-    daily_volume['volume_breadth'] = normalize_data(sma_7d_vb, handle_na='fill', fill_na=0, scale=(0, 0), inplace=True)
-
-    # Replace 0 and 100 values with the mean
-    mean_volume_breadth = daily_volume['volume_breadth'].mean()
-    daily_volume['volume_breadth'] = daily_volume['volume_breadth'].apply(
-        lambda x: mean_volume_breadth if x == 0 or x == 100 else x)
+    daily_volume['volume_breadth'] = normalize_data(daily_volume['sma_7d_vb'], handle_na='fill', fill_na=0, scale=(0, 0), inplace=True)
 
     return daily_volume[['date', 'volume_breadth']]
 
@@ -201,22 +191,18 @@ def calculate_safe_haven_demand(daily_data: pd.DataFrame, bonds_data: pd.DataFra
     sma_rate = calculate_moving_average(merged_data['rate'], avg_period, 1,
                                         avg_method=avg_method, metric='mean')
 
-    epsilon = 1e-9  # Small constant to avoid zero division errors
-    stock_return = (merged_data['average_stock_return'] - sma_stock) / (sma_stock + epsilon)
-    bonds_return = (merged_data['rate'] - sma_rate) / (sma_rate + epsilon)
-    merged_data['safe_haven_index'] = (stock_return - bonds_return)
+    stock_return = (merged_data['average_stock_return'] - sma_stock) / (sma_stock + _EPSILON)
+    bonds_return = (merged_data['rate'] - sma_rate) / (sma_rate + _EPSILON)
+    safe_haven_index = (stock_return - bonds_return)
 
     # Scale the Safe Haven Demand Index to 0-100 for Fear and Greed context
-    min_val, max_val = -10, 10  # Assume min/max range for scaling to 0-100
-    merged_data['safe_haven'] = merged_data['safe_haven_index'].apply(
-        lambda x: scale_to_100(x, min_val, max_val)
-    )
+    merged_data['safe_haven'] = normalize_data(safe_haven_index, scale=(0, 0))
 
-    # Clip values to its mean to smoothen the data
-    mean_value = merged_data['safe_haven'].mean()
-    merged_data['safe_haven'] = merged_data['safe_haven'].apply(
-        lambda x: mean_value if x <= 0 or x >= 100 else x
-    )
+    # # Clip values to its mean to smoothen the data
+    # mean_value = merged_data['safe_haven'].mean()
+    # merged_data['safe_haven'] = merged_data['safe_haven'].apply(
+    #     lambda x: mean_value if x <= 0 or x >= 100 else x
+    # )
     return merged_data[['date', 'safe_haven']]
 
 
