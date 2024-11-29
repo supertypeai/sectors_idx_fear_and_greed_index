@@ -327,8 +327,10 @@ def calculate_interest_rate_index(
 
     # only get the last (ceil(timeframe/30) + 1) months to resample, reducing data volume and workload
     # ceil make sure past N months are captured (including current month)
-    # and the extra + 1 is to compensate for the possibly not included oldest month possible
-    daily_ir_df: pd.DataFrame = interest_rate.iloc[-(ceil(timeframe / 30) + 1) :]
+    # Add an extra +1 to account if the current date is not the date a new data point is inserted
+    # and another extra + 1 is to compensate for the possibly not included oldest month possible
+    print(ceil(timeframe / 30) + 2)
+    daily_ir_df: pd.DataFrame = interest_rate.iloc[-(ceil(timeframe / 30) + 2) :]
     daily_ir_df = daily_ir_df.resample("D").ffill()
     daily_ir_df.index = daily_ir_df.index.map(datetime.date)
     return daily_ir_df[["interest_rate"]].tail(n=timeframe + 1)
@@ -385,6 +387,17 @@ class FearAndGreedIndex:
         "buffett": "sma",
     }
 
+    _FEATURES = [
+        "momentum",
+        "strength",
+        "volatility",
+        "volume_breadth",
+        "safe_haven",
+        "exchange_rate",
+        "interest_rate",
+        "buffett",
+    ]
+
     def __init__(
         self,
         daily_data: pd.DataFrame,
@@ -414,15 +427,8 @@ class FearAndGreedIndex:
     def _average_indices(x: pd.Series, weight=None) -> float:
         if weight is None:
             weight = FearAndGreedIndex._DEFAULT_WEIGHT
-        return (
-            x.momentum * weight["momentum"]
-            + x.strength * weight["strength"]
-            + x.volatility * weight["volatility"]
-            + x.volume_breadth * weight["volume_breadth"]
-            + x.safe_haven * weight["safe_haven"]
-            + x.exchange_rate * weight["exchange_rate"]
-            + x.interest_rate * weight["interest_rate"]
-            + x.buffett * weight["buffett"]
+        return sum(
+            x[feature] * weight[feature] for feature in FearAndGreedIndex._FEATURES
         )
 
     def calculate_fear_and_greed_index(
