@@ -141,23 +141,26 @@ def fetch_idr_usd_rate(timeframe: int = _ONE_WEEK):
     current_date = today
 
     while current_date >= latest_date:
-        url = f'https://openexchangerates.org/api/historical/{current_date}.json'
-        params = {
-            'app_id': _EXCHANGE_RATE_API_KEY,
-            'base': 'USD',
-            'symbols': 'IDR'
-        }
-        print(url)
-        response = requests.get(url, params=params)
-        data = response.json()
-        new_record_timestamp = pd.Timestamp.fromtimestamp(float(data['timestamp']), _TIMEZONE)
-        new_record = {
-            'date': new_record_timestamp.tz_convert(_LOCAL_TIMEZONE).date(),
-            'rate': data['rates']['IDR'],
-            'timestamp': new_record_timestamp
-        }
-        new_historical_data.append(new_record)
-        current_date = current_date - one_day
+        try:
+            url = f'https://openexchangerates.org/api/historical/{current_date}.json'
+            params = {
+                'app_id': _EXCHANGE_RATE_API_KEY,
+                'base': 'USD',
+                'symbols': 'IDR'
+            }
+            print(url)
+            response = requests.get(url, params=params)
+            data = response.json()
+            new_record_timestamp = pd.Timestamp.fromtimestamp(float(data['timestamp']), _TIMEZONE)
+            new_record = {
+                'date': new_record_timestamp.tz_convert(_LOCAL_TIMEZONE).date(),
+                'rate': data['rates']['IDR'],
+                'timestamp': new_record_timestamp
+            }
+            new_historical_data.append(new_record)
+            current_date = current_date - one_day
+        except Exception as e:
+            print(e)
 
     new_rate_df = pd.DataFrame.from_records(new_historical_data)
 
