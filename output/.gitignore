@@ -1,0 +1,4 @@
+# This directory is for output of extra scripts
+# or as temporary dump location of this project by default
+*
+!.gitignore

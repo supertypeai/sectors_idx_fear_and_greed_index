@@ -5,10 +5,14 @@ import requests
 import csv
 import pandas as pd
 
-from contextlib import contextmanager
 from dotenv import load_dotenv
 from supabase import create_client
 from bs4 import BeautifulSoup
+from utils import (
+    override_locale,
+    id_date_format_to_datetime,
+    get_previous_workday
+)
 
 load_dotenv()
 
@@ -19,13 +23,21 @@ supabase_client = create_client(_SUPABASE_URL, _SUPABASE_KEY)
 _SECTORS_API_KEY = os.getenv('SECTORS_API_KEY')
 _EXCHANGE_RATE_API_KEY = os.getenv('EXCHANGE_RATE_API_KEY')
 
+# Timezone definitions
 _TIMEZONE = 'UTC'
 _LOCAL_TIMEZONE = 'Asia/Bangkok'
+_LOCAL_LOCALE = 'id_ID.utf8'
 
+# The retention time for data in days. The extra 60 days are for extra padding for moving average & monthly data
+_RETENTION_TIME = 3 * 365 + 60
+
+# Data collection page size (limited data size per requests)
+_DAILY_DATA_PAGE_SIZE = 90
+_MCAP_DATA_PAGE_SIZE = 90
+
+# Constants and default values
 _ONE_WEEK = 11
 _ONE_YEAR = 365
-_TWO_YEARS = 2 * 365
-
 _SCRAPING_HEADER = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -33,7 +45,6 @@ _SCRAPING_HEADER = {
     'Accept-Encoding': 'gzip, deflate, br, zstd',
     'Connection': 'keep-alive'
 }
-
 _INDOBEX_NAME_ENUM = {
     'Indonesia Composite Bond Index (ICBI)': 'ICBI',
     'INDOBeX Composite Clean Price': 'INDOBeX-CP',
@@ -41,27 +52,6 @@ _INDOBEX_NAME_ENUM = {
     'INDOBeX Composite Effective Yield': 'INDOBeX-EY',
     'INDOBeX Composite Gross Yield': 'INDOBeX-GY',
 }
-
-_DAILY_DATA_PAGE_SIZE = 90
-_MCAP_DATA_PAGE_SIZE = 90
-
-@contextmanager
-def override_locale(category, locale_string):
-    prev_locale_string = locale.getlocale(category)
-    locale.setlocale(category, locale_string)
-    yield
-    locale.setlocale(category, prev_locale_string)
-
-
-def get_previous_workday(date: datetime.date):
-    date_weekday = date.weekday()
-    if date_weekday == 0:  # monday
-        day_delta = 3
-    elif date_weekday == 6:  # sunday
-        day_delta = 2
-    else:
-        day_delta = 1
-    return date - datetime.timedelta(day_delta)
 
 
 def fetch_daily_data(timeframe: int = _ONE_WEEK):
@@ -171,18 +161,13 @@ def fetch_idr_usd_rate(timeframe: int = _ONE_WEEK):
 
     new_rate_df = pd.DataFrame.from_records(new_historical_data)
 
-    max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
+    max_retention = today - pd.Timedelta(_RETENTION_TIME, 'days')
     rate_df = rate_df.loc[rate_df['date'] > max_retention]
     rate_df = pd.concat([new_rate_df, rate_df], sort=True).drop_duplicates(subset=['date'], keep='first')
     rate_df.to_csv('data/exchange_rate.csv', index=False)
 
     max_past_date = today - pd.Timedelta(timeframe, 'days')
     return rate_df.loc[rate_df['date'] > max_past_date]
-
-
-def _id_date_format_to_datetime(date: str):
-    parsed_datetime = datetime.datetime.strptime(date, '%d %B %Y')
-    return parsed_datetime.date()
 
 
 def fetch_idr_interest_rate(timeframe: int = _ONE_YEAR):
@@ -204,19 +189,19 @@ def fetch_idr_interest_rate(timeframe: int = _ONE_YEAR):
         tbody = table.find('tbody')
         entries = tbody.find_all('tr')
         new_entries: list[dict] = []
-        with override_locale(locale.LC_TIME, 'id_ID.utf8'):
+        with override_locale(locale.LC_TIME, _LOCAL_LOCALE):
             for entry in entries:
                 cols = entry.find_all('td')
                 date = cols[0].getText()
                 rate = cols[1].getText()
                 new_entries.append({
-                    'date': _id_date_format_to_datetime(date),
+                    'date': id_date_format_to_datetime(date),
                     'rate': float(rate.split()[0])
                 })
 
         new_interest_df = pd.DataFrame.from_records(new_entries)
 
-        max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
+        max_retention = today - pd.Timedelta(_RETENTION_TIME, 'days')
         interest_df = interest_df.loc[interest_df['date'] > max_retention]
         interest_df = (pd.concat([new_interest_df, interest_df], sort=True)
                        .drop_duplicates(subset=['date'], keep='first'))
@@ -246,8 +231,8 @@ def fetch_bonds_rate(timeframe: int = _ONE_WEEK, force_refresh=False):
         entries = table.find_all('tr')
 
         phei_date_string = soup.find('span', {'id': 'dnn_ctr1478_BondIndexes_indobexdata_lblDate'}).getText()
-        with override_locale(locale.LC_TIME, 'id_ID.utf8'):
-            phei_date = _id_date_format_to_datetime(phei_date_string)
+        with override_locale(locale.LC_TIME, _LOCAL_LOCALE):
+            phei_date = id_date_format_to_datetime(phei_date_string)
         phei_date_previous = get_previous_workday(phei_date)
 
         new_entries: list[dict] = [
@@ -274,7 +259,7 @@ def fetch_bonds_rate(timeframe: int = _ONE_WEEK, force_refresh=False):
 
         new_entry = pd.DataFrame.from_records(new_entries)
 
-        max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
+        max_retention = today - pd.Timedelta(_RETENTION_TIME, 'days')
         bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
         interest_df = pd.concat([new_entry, bonds_df], sort=True).drop_duplicates(subset=['date'], keep='first')
         interest_df.to_csv('data/bonds_rate.csv', index=False)
@@ -292,33 +277,33 @@ def fetch_temp_bonds_rate(timeframe: int = _ONE_WEEK):
     latest_date: datetime.date = bonds_df['date'].max()
     today = pd.Timestamp.now(tz=_LOCAL_TIMEZONE).date()
 
-    if today > latest_date:
-        url = 'https://investing.com/rates-bonds/indonesia-10-year-bond-yield-historical-data'
-        print(url)
-        investingcom_header = _SCRAPING_HEADER.copy()
-        investingcom_header['Host'] = 'www.investing.com'
-        response = requests.get(url, headers=investingcom_header)
-        soup = BeautifulSoup(response.text, 'lxml')
-        table = soup.find('table')
-        table_body = table.find('tbody')
-        entries = table_body.find_all('tr')
+    # if today > latest_date:   # disabled, current date's data might still change if the market is still open
+    url = 'https://investing.com/rates-bonds/indonesia-10-year-bond-yield-historical-data'
+    print(url)
+    investingcom_header = _SCRAPING_HEADER.copy()
+    investingcom_header['Host'] = 'www.investing.com'
+    response = requests.get(url, headers=investingcom_header)
+    soup = BeautifulSoup(response.text, 'lxml')
+    table = soup.find('table')
+    table_body = table.find('tbody')
+    entries = table_body.find_all('tr')
 
-        new_entries: list[dict] = []
-        for entry in entries:
-            cols = entry.find_all('td')
-            date = datetime.datetime.strptime(cols[0].getText(), '%b %d, %Y').date()
-            rate = cols[1].getText()
-            new_entries.append({
-                'date': date,
-                'rate': float(rate)
-            })
+    new_entries: list[dict] = []
+    for entry in entries:
+        cols = entry.find_all('td')
+        date = datetime.datetime.strptime(cols[0].getText(), '%b %d, %Y').date()
+        rate = cols[1].getText()
+        new_entries.append({
+            'date': date,
+            'rate': float(rate)
+        })
 
-        new_bonds_df = pd.DataFrame.from_records(new_entries)
+    new_bonds_df = pd.DataFrame.from_records(new_entries)
 
-        max_retention = today - pd.Timedelta(_TWO_YEARS, 'days')
-        bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
-        bonds_df = pd.concat([new_bonds_df, bonds_df], sort=True).drop_duplicates(subset=['date'], keep='first')
-        bonds_df.to_csv('data/temp_bonds_rate.csv', index=False)
+    max_retention = today - pd.Timedelta(_RETENTION_TIME, 'days')
+    bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
+    bonds_df = pd.concat([new_bonds_df, bonds_df], sort=True).drop_duplicates(subset=['date'], keep='first')
+    bonds_df.to_csv('data/temp_bonds_rate.csv', index=False)
 
     max_past_date = today - pd.Timedelta(timeframe, 'days')
     return bonds_df.loc[bonds_df['date'] > max_past_date]
