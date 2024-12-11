@@ -12,21 +12,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "file",
         type=str,
-        help="the timeframe of the data (from current date) that will be used for calculation, "
-        "defaults to 11",
+        help="the input file, in csv format"
     )
     parser.add_argument(
         "--columns",
         type=str,
         default=["date"],
         nargs="+",
-        help="specifies how many latest datapoints are to be updated into database",
+        help="columns containing human-readable date format that needs transformation",
     )
     parser.add_argument(
         "-o", "--output",
         type=str,
         default="output/result.csv",
-        help="the moving average period, defaults to 7",
+        help="output file",
     )
 
     args = parser.parse_args()

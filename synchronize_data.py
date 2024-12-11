@@ -78,13 +78,13 @@ def fetch_daily_data(timeframe: int = _ONE_WEEK):
 
         response = (supabase_client.table('idx_daily_data')
                     .select('symbol, date, close, volume, market_cap')
-                    .gte('date', max_past_date.date())
+                    .gt('date', max_past_date.date())
                     .lte('date', current_date.date())
                     .in_('symbol', idx30_tickers)
                     .execute())
         records = response.data + records
 
-        current_date = max_past_date - pd.Timedelta(1, 'days')
+        current_date = max_past_date
         remaining_timeframe -= timedelta
 
     daily_data = pd.DataFrame(records)
@@ -187,6 +187,7 @@ def fetch_idr_interest_rate(timeframe: int = _ONE_YEAR):
         url = 'https://www.bi.go.id/id/statistik/indikator/BI-Rate.aspx'
         print(url)
         response = requests.get(url, headers=_SCRAPING_HEADER)
+        print(response.status_code)
         soup = BeautifulSoup(response.text, 'lxml')
         table = soup.find('table')
         tbody = table.find('tbody')

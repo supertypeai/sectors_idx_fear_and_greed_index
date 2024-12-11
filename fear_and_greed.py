@@ -329,7 +329,6 @@ def calculate_interest_rate_index(
     # ceil make sure past N months are captured (including current month)
     # Add an extra +1 to account if the current date is not the date a new data point is inserted
     # and another extra + 1 is to compensate for the possibly not included oldest month possible
-    print(ceil(timeframe / 30) + 2)
     daily_ir_df: pd.DataFrame = interest_rate.iloc[-(ceil(timeframe / 30) + 2) :]
     daily_ir_df = daily_ir_df.resample("D").ffill()
     daily_ir_df.index = daily_ir_df.index.map(datetime.date)

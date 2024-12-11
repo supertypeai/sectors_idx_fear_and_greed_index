@@ -44,7 +44,7 @@ if __name__ == "__main__":
     daily_data = fetch_daily_data(timeframe)
     mcap_data = fetch_mcap_data(timeframe)
     exchange_rate_data = fetch_idr_usd_rate(timeframe)
-    interest_data = fetch_idr_interest_rate()
+    interest_data = fetch_idr_interest_rate(timeframe)
     bonds_data = fetch_temp_bonds_rate(timeframe)
 
     with open("parameters/indices_weight.json") as f:
