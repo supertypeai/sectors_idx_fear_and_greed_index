@@ -35,6 +35,15 @@ Scheduled to run every day at 1:00 AM UTC+7
 
 ## Running Manual
 ### Fear and Greed Index
-* python3 main.py --timeframe {timeframe of the data} --avg_period {avg period for SMA/EMA}
-    --store_db {latest N data to store into DB}
+* `python3 main.py --timeframe {timeframe of the data} --avg_period {avg period for SMA/EMA}
+    --store_db {latest N data to store into DB}`
 * For more info, run `python3 main.py -h`
+
+### Extra Utilities
+#### Fetch IHSG Data
+This can be used to fetch IHSG data as target data for machine learning models
+* `python3 fetch_ihsg_data.py --timeframe {timeframe of the data} --avg_period {avg period for SMA}`
+
+#### Convert Date to ISO format
+This can be used to transform columns in human-readable date format into ISO format in CSV data. Outputs the data in CSV
+* `python3 convert_date_to_iso.py {input file} --columns {columns that need to be transformed} -o {output target}`
