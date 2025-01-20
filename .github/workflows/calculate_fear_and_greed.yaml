@@ -1,4 +1,4 @@
-name: Scrape Daily Bonds Data
+name: Update Fear and Greed Data
 
 on:
   schedule:
@@ -39,19 +39,24 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run py script
-        run: python scrape_bonds_data.py
+      - name: Run py script for Fear and Greed
+        run: python main.py --store-db 1
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           EXCHANGE_RATE_API_KEY: ${{ secrets.EXCHANGE_RATE_API_KEY }}
           SECTORS_API_KEY: ${{ secrets.SECTORS_API_KEY }}
 
+      - name: Run py script for PHEI bonds data
+        run: python scrape_bonds_data.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
       - name: Commit and push changes
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@users.noreply.github.com"
           git add data/bonds_rate.csv
-          git commit -m "Update daily bonds rate from PHEI"
+          git commit -m "Update Fear and Greed Index data & bonds data from PHEI"
           git push

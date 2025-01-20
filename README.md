@@ -36,7 +36,7 @@ Scheduled to run every day at 1:00 AM UTC+7
 ## Running Manual
 ### Fear and Greed Index
 * `python3 main.py --timeframe {timeframe of the data} --avg_period {avg period for SMA/EMA}
-    --store_db {latest N data to store into DB}`
+    --store-db {latest N data to store into DB}`
 * For more info, run `python3 main.py -h`
 
 ### Extra Utilities

@@ -15,21 +15,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--timeframe",
         type=int,
-        default=11,
+        default=60,
         help="the timeframe of the data (from current date) that will be used for calculation, "
-        "defaults to 11",
+        "defaults to 60",
     )
     parser.add_argument(
         "--avg_period",
         type=int,
         default=7,
-        help="the moving average period, defaults to 7",
+        help="the moving average period in days, defaults to 7",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="prints the final indices results"
     )
     parser.add_argument(
-        "--store_db",
+        "--store-db",
         type=int,
         default=0,
         help="specifies how many latest datapoints are to be updated into database",

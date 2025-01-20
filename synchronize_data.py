@@ -181,9 +181,10 @@ def fetch_idr_interest_rate(timeframe: int = _ONE_YEAR):
     latest_date: datetime.date = interest_df['date'].max()
     today = pd.Timestamp.now(tz=_LOCAL_TIMEZONE).date()
 
-    current_date = today
+    current_month = datetime.datetime(today.year, today.month, 1)
+    latest_month = datetime.datetime(latest_date.year, latest_date.month, 1)
 
-    if current_date.month > latest_date.month:
+    if current_month > latest_month:
         url = 'https://www.bi.go.id/id/statistik/indikator/BI-Rate.aspx'
         print(url)
         response = requests.get(url, headers=_SCRAPING_HEADER)
@@ -265,8 +266,8 @@ def fetch_bonds_rate(timeframe: int = _ONE_WEEK, force_refresh=False):
 
         max_retention = today - pd.Timedelta(_RETENTION_TIME, 'days')
         bonds_df = bonds_df.loc[bonds_df['date'] > max_retention]
-        interest_df = pd.concat([new_entry, bonds_df], sort=True).drop_duplicates(subset=['date'], keep='first')
-        interest_df.to_csv('data/bonds_rate.csv', index=False)
+        bonds_df = pd.concat([new_entry, bonds_df], sort=True).drop_duplicates(subset=['date'], keep='first')
+        bonds_df.to_csv('data/bonds_rate.csv', index=False)
 
     max_past_date = today - pd.Timedelta(timeframe, 'days')
     return bonds_df.loc[bonds_df['date'] > max_past_date]

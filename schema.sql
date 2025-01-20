@@ -10,6 +10,6 @@ create table
     interest_rate real not null,
     buffett real not null,
     fear_and_greed_index real not null,
-    updated_on timestamp without time zone not null default now(),
+    updated_on timestamp with time zone not null,
     constraint idx_fear_and_greed_pkey primary key (date)
   ) tablespace pg_default;
