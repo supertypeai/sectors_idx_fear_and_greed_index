@@ -315,36 +315,27 @@ def fetch_temp_bonds_rate(timeframe: int = _ONE_WEEK):
 
 
 def fetch_ihsg_data(timeframe: int = _ONE_WEEK):
-    url = 'https://api.sectors.app/v1/index-daily/ihsg/'
-    headers = {
-        'Authorization': _SECTORS_API_KEY,
-    }
-
     records: list[dict] = []
     current_date = pd.Timestamp.now()
     remaining_timeframe = timeframe
     while remaining_timeframe > 0:
-        timedelta = _MCAP_DATA_PAGE_SIZE if remaining_timeframe >= _MCAP_DATA_PAGE_SIZE else remaining_timeframe
+        timedelta = _DAILY_DATA_PAGE_SIZE if remaining_timeframe >= _DAILY_DATA_PAGE_SIZE else remaining_timeframe
         max_past_date = current_date - pd.Timedelta(timedelta, 'days')
-        params = {
-            'start': max_past_date.date().strftime('%Y-%m-%d'),
-            'end': current_date.date().strftime('%Y-%m-%d')
-        }
 
-        response = requests.get(url, params=params, headers=headers)
+        response = (supabase_client.table('index_daily_data')
+                    .select('date, price')
+                    .gt('date', max_past_date.date())
+                    .lte('date', current_date.date())
+                    .eq('index_code', 'IHSG')
+                    .execute())
+        records = response.data + records
 
-        # Append the new data into the records
-        data = response.json()
-        records = data + records
-
-        # Decrease the date and the remaining timeframe
-        current_date = max_past_date - pd.Timedelta(1, 'days')
+        current_date = max_past_date
         remaining_timeframe -= timedelta
 
-    # Combine the records into a dataframe
-    ihsg_data = pd.DataFrame.from_records(records)
+    ihsg_data = pd.DataFrame(records)
     ihsg_data['date'] = pd.to_datetime(ihsg_data['date']).dt.date
-    # Assuming data is sorted by date ascending, no need to sort
+    # Assuming that data is sorted by date ascending from DB, no need to sort
     return ihsg_data
 
 
@@ -358,7 +349,7 @@ def push_to_db(fear_and_greed_index: pd.DataFrame, n_latest=1):
     # Convert to records
     latest_data_dict = latest_data.to_dict(orient='records')
     # Insert into db
-    supabase_client.table('idx_fear_and_greed').insert(latest_data_dict).execute()
+    supabase_client.table('idx_fear_and_greed').upsert(latest_data_dict, ignore_duplicates=True).execute()
 
 
 if __name__ == '__main__':

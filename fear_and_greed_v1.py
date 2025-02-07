@@ -3,83 +3,7 @@ import pandas as pd
 
 from datetime import datetime
 from math import ceil
-
-_EPSILON = 1e-9  # Small constant to avoid zero division errors
-
-
-def scale_to_100(value, min_val, max_val):
-    if value - min_val < _EPSILON:
-        scaled_value = 0
-    else:
-        scaled_value = (value - min_val) / (max_val - min_val) * 100
-
-    return scaled_value
-
-
-def calculate_moving_average(
-    df: pd.DataFrame,
-    avg_period: int,
-    min_period: int = None,
-    avg_method: str = "sma",
-    metric: str = "mean",
-):
-    result: pd.Series
-    # Calculate moving average based on the specified method
-    match avg_method.lower():
-        case "sma":
-            window = df.rolling(window=avg_period, min_periods=min_period)
-        case "ema":
-            window = df.ewm(span=avg_period, min_periods=min_period, adjust=False)
-        case _:
-            raise AssertionError("No method found for the 'avg_method' parameter")
-
-    match metric.lower():
-        case "mean":
-            result = window.mean()
-        case "std":
-            result = window.std()
-        case _:
-            raise AssertionError("No method found for the 'mean' parameter")
-
-    return result
-
-
-def normalize_data(
-    data: pd.Series,
-    handle_na: str = None,
-    fill_na: float = None,
-    scale: (int, int) = None,
-    inplace=False,
-):
-    if not inplace:
-        data = data.copy()
-
-    # # Replace infinite values with NaN
-    # result.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-    # Handle NA values
-    match handle_na:
-        case "drop":
-            data.dropna(inplace=True)
-        case "mean":
-            mean = data.mean()
-            data.fillna(mean, inplace=True)
-        case "fill":
-            data.fillna(fill_na, inplace=True)
-        case None:
-            pass
-
-    # Scale, scale[0] as min value, and scale[1] as max value
-    if scale is not None:
-        if scale[0] == 0 and scale[1] == 0:
-            min_max = data.aggregate(["min", "max"])
-            scale = (min_max["min"], min_max["max"])
-        elif scale[0] >= scale[1]:
-            raise ValueError()
-        # Perform the scaling
-        data = data.apply(scale_to_100, args=(scale[0], scale[1]))
-
-    return data
+from utils import calculate_moving_average, normalize_data, DIV_EPSILON
 
 
 def calculate_market_momentum(
@@ -93,7 +17,7 @@ def calculate_market_momentum(
 
     # Calculate the percentage difference from the SMA
     daily_momentum_sma_chg = (daily_momentum_df["close"] - daily_momentum_df["sma"]) / (
-        daily_momentum_df["sma"] + _EPSILON
+        daily_momentum_df["sma"] + DIV_EPSILON
     )
 
     # Normalize and scale data
@@ -201,7 +125,7 @@ def calculate_volume_breadth(
         lambda row: (
             row["advancing_volume"] / row["declining_volume"]
             if row["declining_volume"] != 0 and row["advancing_volume"] != 0
-            else _EPSILON
+            else DIV_EPSILON
         ),
         axis=1,
     )
@@ -262,9 +186,9 @@ def calculate_safe_haven_demand(
     )
 
     stock_return = (merged_data["average_stock_return"] - sma_stock) / (
-        sma_stock + _EPSILON
+        sma_stock + DIV_EPSILON
     )
-    bonds_return = (merged_data["rate"] - sma_rate) / (sma_rate + _EPSILON)
+    bonds_return = (merged_data["rate"] - sma_rate) / (sma_rate + DIV_EPSILON)
     safe_haven_index = stock_return - bonds_return
 
     # Scale the Safe Haven Demand Index to 0-100 for Fear and Greed context

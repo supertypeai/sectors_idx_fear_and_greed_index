@@ -3,7 +3,7 @@ import datetime
 from argparse import ArgumentParser
 
 from synchronize_data import fetch_ihsg_data
-from fear_and_greed import normalize_data, calculate_moving_average
+from utils import normalize_data, calculate_moving_average
 
 if __name__ == "__main__":
     parser = ArgumentParser()

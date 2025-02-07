@@ -2,12 +2,16 @@
 Calculates the Fear and Greed Index for Indonesian stock market.
 
 ## Data Source
-* Daily data: Primary Database
+### V1
+* Daily data: Primary database
 * Market cap: Sectors API (https://api.sectors.app/v1/idx-total/)
 * IDR-USD rate: openexchangerates.org (https://openexchangerates.org/api/historical/{current_date}.jsonhttps://openexchangerates.org/api/historical/{date}.json)
 * IDR interest rate: Bank Indonesia (https://www.bi.go.id/id/statistik/indikator/BI-Rate.aspx)
 * Indonesian bonds(not yet used): PHEI (https://www.phei.co.id/Data/Indeks)
 * Indonesian bonds yield (temporary): investing.com (https://investing.com/rates-bonds/indonesia-10-year-bond-yield-historical-data)
+
+### V2
+* Daily data: IHSG data from primary database
 
 ## Data Processing
 Data are stored locally in CSV format at [data directory](./data), and are updated periodically along with the daily calculation.
@@ -19,8 +23,8 @@ Table schema in the database can be found at the [schema file](./schema.sql)
 
 ## Parameters
 Index calculation parameters can be modified and tuned in the [parameters](./parameters) directory
-* Tune the indices weighting with the [indices_weight.json](./parameters/indices_weight.json) file
-* Tune the moving average method with the [average_methods.json](./parameters/average_methods.json) file \
+* Tune the indices weighting with the [indices_weight.json](parameters/v2/indices_weight.json) file
+* Tune the moving average method with the [average_methods.json](parameters/v2/average_methods.json) file \
   This can be used to modify the moving average methods used i.e. Simple Moving Average (SMA) or Exponential Moving Average (EMA)
 
 ## Jobs
