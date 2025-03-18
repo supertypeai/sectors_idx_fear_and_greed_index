@@ -16,6 +16,12 @@ if __name__ == "__main__":
         "defaults to 180",
     )
     parser.add_argument(
+        "--correlate",
+        type=int,
+        nargs="?",
+        help="specifies the delay of the IHSG data to calculate the correlation",
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="prints the final indices results"
     )
     parser.add_argument(
@@ -27,6 +33,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     timeframe: int = args.timeframe
+    correlate_period: int = args.correlate
     verbose: bool = args.verbose
     store_db: int = args.store_db
 
@@ -41,7 +48,7 @@ if __name__ == "__main__":
     fear_and_greed_index = FearAndGreedIndexV2(daily_data)
     fear_and_greed_index.set_weight(weight)
     fear_and_greed_index.set_moving_avg_method(moving_avg_methods)
-    fear_and_greed_data = fear_and_greed_index.calculate_fear_and_greed_index(verbose)
+    fear_and_greed_data = fear_and_greed_index.calculate_fear_and_greed_index(correlate_period, verbose)
 
     if store_db > 0:
         push_to_db(fear_and_greed_data, n_latest=store_db)

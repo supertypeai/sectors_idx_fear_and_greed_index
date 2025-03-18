@@ -40,7 +40,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run py script for Fear and Greed
-        run: python main.py --store-db 1
+        run: python main.py --correlate 3 --store-db 1
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}

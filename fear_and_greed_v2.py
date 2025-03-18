@@ -67,6 +67,16 @@ def _calculate_trend_strength(
     return df_trend_strength[["date", "trend_strength"]]
 
 
+def shift_data(daily_data: pd.DataFrame, period: int):
+    df_shifted_data = daily_data.copy()
+    df_shifted_data["change"] = df_shifted_data["price"].pct_change()
+    df_shifted_data["change"] = normalize_data(df_shifted_data["change"], scale=(0, 0))
+
+    df_shifted_data["date"] = (pd.to_datetime(df_shifted_data["date"]) - pd.tseries.offsets.BusinessDay(n=period)).dt.date
+    df_shifted_data.set_index("date", inplace=True)
+    return df_shifted_data
+
+
 class FearAndGreedIndexV2:
     _DEFAULT_WEIGHT = {
         "momentum": 0.2,
@@ -123,7 +133,7 @@ class FearAndGreedIndexV2:
         )
 
     def calculate_fear_and_greed_index(
-            self, verbose=False
+            self, correlate: int | None = None, verbose=False
     ):
         # Calculate Momentum
         df_momentum = _calculate_momentum(
@@ -159,7 +169,17 @@ class FearAndGreedIndexV2:
             lambda x: self._average_indices(x, self._weight), axis=1
         )
 
+        if correlate is not None:
+            lagged_ihsg = shift_data(self._daily_data, 3)
+            if verbose:
+                print(f"{correlate}-days Lagged IHSG data")
+                print(lagged_ihsg.tail(10).to_string())
+            joined_data = combined_indices.join(lagged_ihsg)
+            corr = joined_data["fear_and_greed_index"].corr(joined_data["change"])
+            combined_indices[f"corr_{correlate}d"] = corr
+
         if verbose:
-            print(combined_indices.to_string())
+            print("Final result")
+            print(combined_indices.tail(10).to_string())
 
         return combined_indices
