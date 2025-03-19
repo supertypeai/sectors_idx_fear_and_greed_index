@@ -19,7 +19,7 @@ if __name__ == "__main__":
         "--correlate",
         type=int,
         nargs="?",
-        help="specifies the delay of the IHSG data to calculate the correlation",
+        help="specifies the forward shift of the IHSG data for correlation calculation",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="prints the final indices results"

@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from datetime import datetime
-from utils import calculate_moving_average, normalize_data, DIV_EPSILON
+from utils import calculate_moving_average, normalize_data
 
 
 def _calculate_momentum(
@@ -37,7 +36,7 @@ def _calculate_volatility(
 
     df_volatility["daily_return"] = df_volatility["price"].pct_change()
     df_volatility["_volatility"] = calculate_moving_average(df_volatility["daily_return"], avg_period,
-                                                           avg_method=avg_method, metric="std")
+                                                            avg_method=avg_method, metric="std")
     df_volatility["volatility"] = normalize_data(df_volatility["_volatility"], scale=(0, 0))
 
     return df_volatility[["date", "volatility"]]
@@ -50,7 +49,7 @@ def _calculate_recovery(
     df_recovery['high'] = df_recovery['price'].rolling(window=rolling_window).max()
     df_recovery['low'] = df_recovery['price'].rolling(window=rolling_window).min()
     df_recovery['_recovery'] = ((df_recovery['price'] - df_recovery['low']) /
-                               (df_recovery['high'] - df_recovery['low']))
+                                (df_recovery['high'] - df_recovery['low']))
     df_recovery["recovery"] = normalize_data(df_recovery["_recovery"], scale=(0, 0))
 
     return df_recovery[["date", "recovery"]]
@@ -69,10 +68,9 @@ def _calculate_trend_strength(
 
 def shift_data(daily_data: pd.DataFrame, period: int):
     df_shifted_data = daily_data.copy()
-    df_shifted_data["change"] = df_shifted_data["price"].pct_change()
-    df_shifted_data["change"] = normalize_data(df_shifted_data["change"], scale=(0, 0))
-
-    df_shifted_data["date"] = (pd.to_datetime(df_shifted_data["date"]) - pd.tseries.offsets.BusinessDay(n=period)).dt.date
+    df_shifted_data["scaled"] = normalize_data(df_shifted_data["price"], scale=(0, 0))
+    df_shifted_data["date"] = (
+                pd.to_datetime(df_shifted_data["date"]) + pd.tseries.offsets.BusinessDay(n=period)).dt.date
     df_shifted_data.set_index("date", inplace=True)
     return df_shifted_data
 
@@ -133,7 +131,7 @@ class FearAndGreedIndexV2:
         )
 
     def calculate_fear_and_greed_index(
-            self, correlate: int | None = None, verbose=False
+            self, correlate_period: int | None = None, verbose=False
     ):
         # Calculate Momentum
         df_momentum = _calculate_momentum(
@@ -169,14 +167,15 @@ class FearAndGreedIndexV2:
             lambda x: self._average_indices(x, self._weight), axis=1
         )
 
-        if correlate is not None:
+        if correlate_period is not None:
             lagged_ihsg = shift_data(self._daily_data, 3)
+            joined_data = combined_indices[["fear_and_greed_index"]].join(lagged_ihsg).tail(30)
+            corr = joined_data["fear_and_greed_index"].corr(joined_data["scaled"])
+            combined_indices[f"corr_{correlate_period}d"] = corr
+
             if verbose:
-                print(f"{correlate}-days Lagged IHSG data")
-                print(lagged_ihsg.tail(10).to_string())
-            joined_data = combined_indices.join(lagged_ihsg)
-            corr = joined_data["fear_and_greed_index"].corr(joined_data["change"])
-            combined_indices[f"corr_{correlate}d"] = corr
+                print(f"{correlate_period}-days Lagged IHSG data")
+                print(joined_data.tail(10).to_string())
 
         if verbose:
             print("Final result")
